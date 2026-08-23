@@ -2,6 +2,18 @@
 
 All notable, user-visible changes are documented here.
 
+## Unreleased
+
+### Added
+
+- Snapshot data compression: `gzip` by default, optional `zstd`
+  (`--compression zstd`, requires Python 3.14+ on both capturing and
+  restoring machines). The algorithm used is recorded per snapshot;
+  pre-compression snapshots remain restorable.
+- Opt-in retention: `linux-state snapshot --keep N` prunes all but the
+  newest N snapshots after creating a new one. Without the flag nothing
+  is ever deleted.
+
 ## 0.1.0 - 2026-08-23
 
 Initial MVP release.

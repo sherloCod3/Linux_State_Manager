@@ -15,7 +15,6 @@ The source tree is never modified.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import platform
@@ -25,6 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from linux_state import discovery as discovery_mod
+from linux_state.compression import CompressionError
 from linux_state.discovery import Entry, Kind
 from linux_state.manifest import build_manifest, serialize_manifest
 
@@ -100,10 +100,24 @@ def _os_release_field(key: str) -> str | None:
     return None
 
 
-def _materialize(entry: Entry, root: Path, destination_root: Path) -> None:
-    """Copy one entry into data/, preserving structure."""
+def _materialize(
+    entry: Entry,
+    root: Path,
+    destination_root: Path,
+    compression: str = "none",
+) -> None:
+    """Store one entry into data/, preserving structure.
+
+    Regular files are stored compressed per *compression*; the manifest
+    keeps referring to logical (uncompressed) paths.
+    """
+    from linux_state import compression as codec
+
     relative = entry.path.relative_to(root)
-    destination = destination_root / relative
+    if entry.kind == Kind.FILE:
+        destination = destination_root / codec.stored_name(relative.as_posix(), compression)
+    else:
+        destination = destination_root / relative
 
     if entry.kind == Kind.DIRECTORY:
         destination.mkdir(parents=True, exist_ok=True)
@@ -111,8 +125,7 @@ def _materialize(entry: Entry, root: Path, destination_root: Path) -> None:
     elif entry.kind == Kind.FILE:
         destination.parent.mkdir(parents=True, exist_ok=True)
         try:
-            shutil.copy2(entry.path, destination, follow_symlinks=False)
-            os.chmod(destination, int(entry.mode, 8))
+            codec.compress(entry.path, destination, compression)
         except OSError as exc:
             raise SnapshotError(
                 "copy", entry.path, exc.strerror or str(exc)
@@ -137,12 +150,16 @@ def create_snapshot(
     hash_files: bool = True,
     classifier=None,
     xdg=None,
+    compression: str = "gzip",
 ) -> str:
     """Create a full snapshot of *root* inside *storage_root*.
 
     Returns the new snapshot id. Raises SnapshotError on failure without
     leaving a partial snapshot behind.
     """
+    from linux_state import compression as codec
+
+    codec.require_available(compression)
     root = root.resolve()
     if not root.is_dir():
         raise SnapshotError("snapshot", root, "not a directory")
@@ -170,6 +187,7 @@ def create_snapshot(
             snapshot_metadata={"id": snapshot_id},
         )
         metadata = collect_metadata(root)
+        metadata["compression"] = compression
         (staging_dir / "manifest.json").write_text(
             serialize_manifest(manifest), encoding="utf-8"
         )
@@ -178,13 +196,16 @@ def create_snapshot(
         )
 
         for entry in entries:
-            _materialize(entry, root, staging_dir / "data")
+            _materialize(entry, root, staging_dir / "data", compression)
 
         # Only publish complete snapshots.
         staging_dir.rename(final_dir)
     except SnapshotError:
         shutil.rmtree(staging_dir, ignore_errors=True)
         raise
+    except CompressionError as exc:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        raise SnapshotError("snapshot", staging_dir, str(exc)) from exc
     except OSError as exc:
         shutil.rmtree(staging_dir, ignore_errors=True)
         raise SnapshotError(
@@ -196,14 +217,22 @@ def create_snapshot(
 
 def verify_snapshot(storage_root: Path, snapshot_id: str) -> dict:
     """Re-hash stored files against the manifest. Read-only."""
+    from linux_state import compression as codec
     from linux_state.storage import (
         data_dir as _data_dir,
+        load_metadata,
         manifest_file as _manifest_file,
     )
 
     manifest_path = _manifest_file(storage_root, snapshot_id)
     if not manifest_path.is_file():
         raise SnapshotError("verify", manifest_path, "manifest not found")
+
+    try:
+        metadata = load_metadata(storage_root, snapshot_id)
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        raise SnapshotError("verify", manifest_path, str(exc)) from exc
+    algorithm = codec.normalize(metadata.get("compression"))
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     stored = _data_dir(storage_root, snapshot_id)
@@ -213,16 +242,17 @@ def verify_snapshot(storage_root: Path, snapshot_id: str) -> dict:
     for record in manifest["files"]:
         if record["type"] != Kind.FILE.value or "sha256" not in record:
             continue
-        path = stored / Path(record["path"]).relative_to(Path(manifest["root"]))
-        digest = hashlib.sha256()
-        try:
-            with path.open("rb") as fh:
-                while chunk := fh.read(discovery_mod.CHUNK_SIZE):
-                    digest.update(chunk)
-        except OSError as exc:
-            mismatches.append(f"{record['path']}: {exc.strerror}")
+        relative = Path(record["path"]).relative_to(Path(manifest["root"]))
+        path = stored / codec.stored_name(relative.as_posix(), algorithm)
+        if not path.exists():
+            mismatches.append(f"{record['path']}: missing stored data")
             continue
-        if digest.hexdigest() != record["sha256"]:
+        try:
+            digest = codec.hash_content(path, algorithm)
+        except CompressionError as exc:
+            mismatches.append(f"{record['path']}: {exc}")
+            continue
+        if digest != record["sha256"]:
             mismatches.append(record["path"])
         checked += 1
 

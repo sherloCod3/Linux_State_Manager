@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 
 SNAPSHOT_ID_PATTERN = re.compile(r"^[0-9TzZ.\-]+-[0-9a-f]{4}$")
@@ -50,6 +51,25 @@ def list_snapshots(storage_root: Path) -> list[str]:
         if entry.is_dir() and SNAPSHOT_ID_PATTERN.match(entry.name)
     ]
     return sorted(ids)
+
+
+def prune_snapshots(storage_root: Path, keep: int) -> list[str]:
+    """Delete all but the newest *keep* snapshots. Opt-in retention.
+
+    Returns the removed snapshot IDs (oldest first). Only directories
+    matching the snapshot id pattern are ever considered; transactions
+    are never touched.
+    """
+    if keep < 0:
+        raise ValueError("keep must be >= 0")
+    ids = list_snapshots(storage_root)
+    if len(ids) <= keep:
+        return []
+    to_remove = ids[: len(ids) - keep]
+    for snapshot_id in to_remove:
+        directory = snapshots_dir(storage_root) / snapshot_id
+        shutil.rmtree(directory)
+    return to_remove
 
 
 def snapshot_path(storage_root: Path, snapshot_id: str) -> Path:

@@ -194,17 +194,16 @@ class TestExecution:
 
 class TestFailureHandling:
     def test_failure_stops_run_and_records_state(self, scenario, monkeypatch):
-        import linux_state.executor as executor_mod
+        import linux_state.compression as codec
 
-        calls = {"n": 0}
-        original_copy2 = executor_mod.shutil.copy2
+        original_decompress = codec.decompress
 
-        def failing_copy2(*args, **kwargs):
-            if args and str(args[0]).endswith("newfile.txt"):
+        def failing_decompress(source, destination, algorithm):
+            if str(source).endswith("newfile.txt"):
                 raise OSError(13, "Permission denied")
-            return original_copy2(*args, **kwargs)
+            return original_decompress(source, destination, algorithm)
 
-        monkeypatch.setattr(executor_mod.shutil, "copy2", failing_copy2)
+        monkeypatch.setattr(codec, "decompress", failing_decompress)
         result = execute_plan(
             scenario["plan"], scenario["root"], scenario["storage"],
             scenario["data"], scenario["manifest"],

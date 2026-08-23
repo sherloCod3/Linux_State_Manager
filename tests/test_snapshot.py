@@ -103,15 +103,39 @@ class TestCreateSnapshot:
         assert data_dir(storage, sid).is_dir()
 
     def test_data_matches_source(self, rich_tree, storage):
+        import gzip
+
         sid = create_snapshot(rich_tree, storage)
         stored = data_dir(storage, sid)
-        assert (stored / ".bashrc").read_text() == "export EDITOR=nvim\n"
-        assert (stored / ".config/nvim/init.lua").is_file()
+        assert gzip.open(stored / ".bashrc.gz", "rt").read() == "export EDITOR=nvim\n"
+        assert gzip.open(stored / ".config/nvim/init.lua.gz", "rt").read() == (
+            "vim.cmd('hi')\n"
+        )
 
-    def test_modes_preserved(self, rich_tree, storage):
+    def test_compression_recorded_in_metadata(self, rich_tree, storage):
         sid = create_snapshot(rich_tree, storage)
-        mode = (data_dir(storage, sid) / ".bashrc").stat().st_mode & 0o777
-        assert mode == 0o600
+        meta = json.loads(metadata_file(storage, sid).read_text())
+        assert meta["compression"] == "gzip"
+
+    def test_zstd_snapshot_when_available(self, rich_tree, storage):
+        from linux_state import compression as codec
+        import json as _json
+
+        if not codec.is_available("zstd"):
+            pytest.skip("zstd module not available on this Python")
+        sid = create_snapshot(rich_tree, storage, compression="zstd")
+        meta = _json.loads(metadata_file(storage, sid).read_text())
+        assert meta["compression"] == "zstd"
+        assert (data_dir(storage, sid) / ".bashrc.zst").is_file()
+        result = verify_snapshot(storage, sid)
+        assert result["mismatches"] == []
+
+    def test_modes_recorded_and_restorable(self, rich_tree, storage):
+        """Modes live in the manifest now; restore applies them (see executor tests)."""
+        sid = create_snapshot(rich_tree, storage)
+        manifest = json.loads(manifest_file(storage, sid).read_text())
+        bashrc = next(f for f in manifest["files"] if f["path"].endswith(".bashrc"))
+        assert bashrc["mode"] == "0600"
 
     def test_symlinks_preserved_as_symlinks(self, rich_tree, storage):
         sid = create_snapshot(rich_tree, storage)
@@ -154,10 +178,11 @@ class TestCreateSnapshot:
         sid = create_snapshot(rich_tree, storage)
         result = verify_snapshot(storage, sid)
         assert result["mismatches"] == []
-        target = data_dir(storage, sid) / ".bashrc"
-        target.write_text("tampered\n")
+        target = data_dir(storage, sid) / ".bashrc.gz"
+        target.write_bytes(b"corrupted gzip payload")
         result = verify_snapshot(storage, sid)
-        assert result["mismatches"] == [str(rich_tree.resolve() / ".bashrc")]
+        assert len(result["mismatches"]) == 1
+        assert result["mismatches"][0].startswith(str(rich_tree.resolve() / ".bashrc"))
 
     def test_verify_missing_manifest_fails(self, storage):
         sid = new_snapshot_id()
@@ -172,5 +197,5 @@ class TestMultipleSnapshots:
         second = create_snapshot(rich_tree, storage)
         assert first != second
         assert list_snapshots(storage) == sorted([first, second])
-        assert not (data_dir(storage, first) / "newfile.txt").exists()
-        assert (data_dir(storage, second) / "newfile.txt").is_file()
+        assert not (data_dir(storage, first) / "newfile.txt.gz").exists()
+        assert (data_dir(storage, second) / "newfile.txt.gz").is_file()

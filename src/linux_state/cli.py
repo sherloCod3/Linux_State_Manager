@@ -150,6 +150,7 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
             hash_files=not args.no_hash,
             classifier=ruleset,
             xdg=xdg,
+            compression=args.compression,
         )
     except DiscoveryError as exc:
         print(
@@ -168,6 +169,19 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
 
     print(f"Snapshot created: {snapshot_id}")
     print(f"Storage: {storage_root / 'snapshots' / snapshot_id}")
+
+    if args.keep is not None:
+        from linux_state.storage import prune_snapshots
+
+        try:
+            pruned = prune_snapshots(storage_root, args.keep)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+        for removed in pruned:
+            print(f"Pruned: {removed}")
+        if pruned:
+            print(f"Pruned {len(pruned)} snapshot(s); kept the newest {args.keep}.")
     return 0
 
 
@@ -449,6 +463,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-hash",
         action="store_true",
         help="Skip SHA-256 hashing.",
+    )
+    snapshot.add_argument(
+        "--compression",
+        choices=("gzip", "zstd"),
+        default="gzip",
+        help="Snapshot data compression (default: gzip).",
+    )
+    snapshot.add_argument(
+        "--keep",
+        type=int,
+        metavar="N",
+        help="After creating the snapshot, prune all but the newest N snapshots.",
     )
     snapshot.add_argument(
         "--rules",

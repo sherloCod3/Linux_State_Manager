@@ -23,6 +23,7 @@ Transaction layout:
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 from dataclasses import dataclass
@@ -143,12 +144,16 @@ def _ensure_within_root(target: Path, root: Path) -> None:
         ) from None
 
 
-def _hash_of(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as fh:
-        while chunk := fh.read(CHUNK_SIZE):
-            digest.update(chunk)
-    return digest.hexdigest()
+def _hash_of(path: Path, algorithm: str = "none") -> str:
+    from linux_state import compression as codec
+
+    if algorithm == "none":
+        digest = hashlib.sha256()
+        with path.open("rb") as fh:
+            while chunk := fh.read(CHUNK_SIZE):
+                digest.update(chunk)
+        return digest.hexdigest()
+    return codec.hash_content(path, algorithm)
 
 
 def execute_plan(
@@ -175,6 +180,17 @@ def execute_plan(
     root = root.resolve()
     tx = new_transaction(storage_root, plan.snapshot_id, plan.profile, root)
 
+    # Snapshot data may be stored compressed; the metadata decides decoding.
+    from linux_state import compression as codec
+    from linux_state.storage import load_metadata
+
+    try:
+        metadata = load_metadata(storage_root, plan.snapshot_id)
+    except (FileNotFoundError, json.JSONDecodeError):
+        metadata = {}  # legacy snapshot without metadata
+    algorithm = codec.normalize(metadata.get("compression"))
+    codec.require_available(algorithm)
+
     records_by_rel = {}
     for record in manifest["files"]:
         relative = Path(record["path"]).relative_to(Path(manifest["root"])).as_posix()
@@ -195,9 +211,9 @@ def execute_plan(
 
             target = root / action.path
             _ensure_within_root(target, root)
-            source = snapshot_data_dir / action.path
+            source = snapshot_data_dir / codec.stored_name(action.path, algorithm)
             try:
-                _apply_action(tx, record, source, target, root, action.path)
+                _apply_action(tx, record, source, target, root, action.path, algorithm)
             except ExecutionError:
                 raise
             except OSError as exc:
@@ -243,7 +259,11 @@ def _backup_existing(tx: Transaction, target: Path, relative: str) -> None:
         tx.rollback.append({"path": relative, "type": "dir"})
 
 
-def _apply_action(tx, record, source: Path, target: Path, root: Path, relative: str) -> None:
+def _apply_action(
+    tx, record, source: Path, target: Path, root: Path, relative: str, algorithm: str = "none"
+) -> None:
+    from linux_state import compression as codec
+
     kind = record["type"]
 
     _backup_existing(tx, target, relative)
@@ -262,13 +282,13 @@ def _apply_action(tx, record, source: Path, target: Path, root: Path, relative: 
 
     if kind == Kind.FILE.value:
         stored_hash = record.get("sha256")
-        if stored_hash and _hash_of(source) != stored_hash:
+        if stored_hash and _hash_of(source, algorithm) != stored_hash:
             raise ExecutionError(
                 "verify-snapshot", source,
                 "stored snapshot content does not match manifest hash",
             )
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target, follow_symlinks=False)
+        codec.decompress(source, target, algorithm)
         os.chmod(target, int(record["mode"], 8))
         applied_hash = _hash_of(target)
         if stored_hash and applied_hash != stored_hash:

@@ -47,11 +47,17 @@ linux-state --help
 linux-state scan --root ~ -v
 
 # Create a full snapshot under $XDG_DATA_HOME/linux-state/snapshots/.
+# Data is gzip-compressed by default; --compression zstd requires Python 3.14+.
 linux-state snapshot --root ~
+
+# Opt-in retention: after snapshotting, prune all but the newest 10 snapshots.
+linux-state snapshot --root ~ --keep 10
 ```
 
 Snapshots preserve file modes and symlinks (including broken ones) and store
-a manifest with SHA-256 hashes plus environment metadata.
+a manifest with SHA-256 hashes plus environment metadata. File data is stored
+compressed per file (`gzip` or `zstd`); the algorithm used is recorded in each
+snapshot's metadata, and pre-compression legacy snapshots remain restorable.
 
 ### Browse stored snapshots
 
@@ -150,8 +156,10 @@ Project documents:
   current user.
 - Conflict handling offers skip/replace flags only; no interactive prompts
   or automatic merging.
-- Compression, incremental snapshots and deduplication are not implemented;
-  snapshots are full copies.
+- Snapshots are full copies with per-file compression; incremental
+  snapshots and deduplication are not implemented.
+- `zstd` snapshots require Python 3.14+ on **both** the capturing and the
+  restoring machine (stdlib `compression.zstd`); `gzip` works everywhere.
 
 ## License
 
