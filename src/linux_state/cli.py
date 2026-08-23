@@ -311,12 +311,59 @@ def cmd_restore(args: argparse.Namespace) -> int:
         except ValueError:
             display = path
         print(f"RESTORED  {display}")
+
+    # A restore is only complete once verification passes (AGENTS §13).
+    from linux_state.verification import attach_verification, verify_paths
+
+    report = verify_paths(root, manifest, tx.executed)
+    attach_verification(tx.directory, report)
+    print(
+        f"\nVerification: {report['result']} "
+        f"(checked {report['checked']}, failures {len(report['failures'])})"
+    )
+    for failure in report["failures"]:
+        print(f"  FAILED {failure['path']}: {failure['check']} - {failure['reason']}")
+
     counts = plan.counts()
     summary = ", ".join(f"{name}: {count}" for name, count in sorted(counts.items()))
     print(f"\nTransaction: {tx.id} ({tx.status})")
     print(f"Executed: {len(tx.executed)}  Failed: {len(tx.failed)}")
     print(f"Plan summary -> {summary or 'no actions'}")
-    return 0 if tx.status == "completed" else 2
+    if tx.status == "failed" or report["result"] == "FAIL":
+        print("Rollback available: linux-state rollback --transaction " + tx.id)
+        return 2
+    return 0
+
+
+def cmd_rollback(args: argparse.Namespace) -> int:
+    from linux_state.rollback import latest_transaction, perform_rollback
+    from linux_state.storage import transactions_dir
+
+    storage_root = Path(args.storage).expanduser() if args.storage else default_storage_root()
+    tx_id = args.transaction or latest_transaction(storage_root)
+    if not tx_id:
+        print("ERROR\nOperation: rollback\nReason: no transactions found.\n"
+              "Action: pass --transaction <id>.", file=sys.stderr)
+        return 1
+
+    try:
+        original, rb_tx = perform_rollback(storage_root, tx_id, approve=args.approve)
+    except Exception as exc:
+        operation = getattr(exc, "operation", "rollback")
+        path = getattr(exc, "path", None)
+        reason = exc
+        print(
+            f"ERROR\nOperation: {operation}\nPath: {path}\n"
+            f"Reason: {reason}\nAction: inspect the transaction record and retry.",
+            file=sys.stderr,
+        )
+        return 2
+
+    for entry in rb_tx.executed:
+        print(f"ROLLBACK  {entry}")
+    print(f"\nRolled back transaction: {original.id}")
+    print(f"Rollback transaction: {rb_tx.id} ({rb_tx.status})")
+    return 0 if rb_tx.status == "completed" else 2
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -476,6 +523,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Explicitly approve execution. Without this flag nothing is modified.",
     )
     restore_cmd.set_defaults(func=cmd_restore)
+
+    rollback_cmd = sub.add_parser(
+        "rollback",
+        help="Undo a restore transaction, restoring the previous state.",
+    )
+    rollback_cmd.add_argument(
+        "--transaction",
+        metavar="ID",
+        help="Transaction to undo (default: the most recent one).",
+    )
+    rollback_cmd.add_argument("--storage", metavar="PATH",
+                              help="Storage root (default: $XDG_DATA_HOME/linux-state).")
+    rollback_cmd.add_argument(
+        "--approve",
+        action="store_true",
+        help="Explicitly approve. Without this flag nothing is modified.",
+    )
+    rollback_cmd.set_defaults(func=cmd_rollback)
 
     return parser
 

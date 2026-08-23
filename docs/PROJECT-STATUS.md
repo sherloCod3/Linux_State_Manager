@@ -8,8 +8,8 @@ snapshots and selectively restores user state safely
 
 ## Current Phase
 
-MVP-06 — Restore Executor + Backup Before Replace (COMPLETE, validated)
-Next phase: MVP-07 — Verification Report + Rollback Command
+MVP-07 — Verification + Rollback (COMPLETE, validated)
+Next phase: MVP-08 — Documentation polish and publication review
 
 ## Implementation Status
 
@@ -25,34 +25,30 @@ Next phase: MVP-07 — Verification Report + Rollback Command
 | Profiles     | Validated   |
 | Restore plan | Validated   |
 | Restore      | Validated   |
-| Verification | Not started |
-| Rollback     | Not started |
+| Verification | Validated   |
+| Rollback     | Validated   |
 
 ## Last Known Good State
 
 Milestone:
-MVP-06 - Restore Executor and Backup Before Replace
+MVP-07 - Verification and Rollback
 
 Validated:
-- Execution requires explicit approval; refusal changes nothing.
-- Transactions recorded under storage/transactions/<id>/transaction.json
-  (planned/executed/failed/status/rollback info).
-- Backup-before-replace: previous file content preserved in transaction
-  backup dir; symlink targets recorded for recreation.
-- NEW actions create files/dirs/symlinks with snapshot modes.
-- CONFLICT default policy = skip (nothing silently overwritten);
-  replace only with explicit --conflict replace.
-- SAME entries untouched (mtime preserved).
-- Snapshot content verified against manifest hash before applying, and
-  restored content verified after writing; mismatch aborts the run.
-- First failure stops the run; failure recorded; no partial success
-  reported as complete. Raw OSError converted to explicit ExecutionError.
-- Symlink escape protection: restore target resolving outside the root is
-  rejected before any write.
-- CLI: `linux-state restore <id> --approve [--conflict replace]`.
+- Post-restore verification: existence, SHA-256, mode and symlink target
+  checks against the manifest; report stored inside the transaction record.
+- Restore is not reported complete until verification passes.
+- Rollback restores pre-restore state from transaction backups: conflict
+  files reverted to pre-restore content; created files removed; symlinks
+  recreated from recorded targets; SAME files untouched.
+- Rollback requires explicit approval; refusal changes nothing.
+- Rollback writes its own completed transaction record.
+- Unknown transactions fail explicitly.
+- Transactions now record the restore root.
+- CLI end-to-end validated: snapshot → mutate → restore --approve
+  (Verification PASS) → rollback --approve (prior state recovered).
 
 Tests:
-- 134 passing
+- 146 passing
 - 0 failing
 
 Last validation:
@@ -60,9 +56,9 @@ Last validation:
 
 ## Current Work
 
-Task: none active — MVP-06 complete.
+Task: none active — MVP-07 complete.
 
-Next task: MVP-07 — Verification Report + Rollback Command.
+Next task: MVP-08 — Documentation polish and publication review.
 
 Do not implement:
 - Automatic merge of configuration files.
@@ -70,10 +66,8 @@ Do not implement:
 
 ## Next Step
 
-Implement `linux_state.verification` (post-restore report: existence, hash,
-mode, symlink checks) and `linux_state.rollback` + `linux-state rollback
-[--transaction <id>]` using the transaction rollback info to restore the
-pre-restore state safely.
+Final polish: accurate README usage documentation (real commands only),
+CHANGELOG entry for the MVP, publication review per AGENTS §46.19.
 
 ## Architectural Decisions
 
@@ -81,17 +75,20 @@ See `docs/adr/`:
 
 - ADR-001 — Filesystem is the source of truth (no reorganization).
 - ADR-002 — Python 3 stdlib-first; PyYAML only external MVP dependency.
-- ADR-003 — Restore planner/executor separation (accepted, not yet built).
+- ADR-003 — Restore planner/executor separation (IMPLEMENTED, MVP-05/06).
 - ADR-004 — Rules bundled inside the package; user dirs override by precedence.
 
 ## Known Limitations
 
 - ACLs / extended attributes are not yet captured (Python stdlib support is
   partial); flagged as best-effort for later milestones.
+- Ownership (uid/gid) is recorded but never restored; restored files belong
+  to the current user.
+- Conflict resolution offers skip/replace flags; interactive prompts and
+  merge are not implemented.
 
 ## Tests Executed
 
-- 134 pytest tests (discovery, manifest, snapshot, storage, classification,
-  profiles, planner, executor, integration, CLI) — all passing (2026-08-23).
-- End-to-end: restore without --approve refused; with approval, NEW file
-  restored, SAME untouched, transaction recorded as completed.
+- 146 pytest tests — all passing (2026-08-23).
+- End-to-end CLI cycle: snapshot → mutate → restore --approve
+  (Verification PASS) → rollback --approve (prior state recovered).

@@ -35,6 +35,10 @@ def snapshots_dir(storage_root: Path) -> Path:
     return storage_root / "snapshots"
 
 
+def transactions_dir(storage_root: Path) -> Path:
+    return storage_root / "transactions"
+
+
 def list_snapshots(storage_root: Path) -> list[str]:
     """Return known snapshot IDs, sorted oldest first."""
     directory = snapshots_dir(storage_root)

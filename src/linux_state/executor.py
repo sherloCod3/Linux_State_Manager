@@ -59,6 +59,7 @@ class Transaction:
     started: str
     snapshot_id: str = ""
     profile: str = ""
+    root: str = ""
     executed: list[str] | None = None
     failed: list[dict] | None = None
     status: str = STATUS_RUNNING
@@ -79,6 +80,7 @@ class Transaction:
             "status": self.status,
             "snapshot_id": self.snapshot_id,
             "profile": self.profile,
+            "root": self.root,
             "executed": self.executed,
             "failed": self.failed,
             "rollback_info": self.rollback,
@@ -93,8 +95,28 @@ class Transaction:
         tmp.write_text(json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n")
         tmp.replace(path)
 
+    @classmethod
+    def load(cls, directory: Path) -> "Transaction":
+        import json
 
-def new_transaction(storage_root: Path, snapshot_id: str, profile: str) -> Transaction:
+        record = json.loads((directory / "transaction.json").read_text())
+        return cls(
+            id=record["transaction"],
+            directory=directory,
+            started=record["started"],
+            snapshot_id=record.get("snapshot_id", ""),
+            profile=record.get("profile", ""),
+            root=record.get("root", ""),
+            executed=record.get("executed", []),
+            failed=record.get("failed", []),
+            status=record.get("status", STATUS_RUNNING),
+            rollback=record.get("rollback_info", []),
+        )
+
+
+def new_transaction(
+    storage_root: Path, snapshot_id: str, profile: str, root: Path
+) -> Transaction:
     now = datetime.now(timezone.utc)
     tx_id = f"{now.strftime('%Y-%m-%dT%H-%M-%SZ')}-{_new_tx_suffix().split('-')[-1]}"
     directory = storage_root / "transactions" / tx_id
@@ -105,6 +127,7 @@ def new_transaction(storage_root: Path, snapshot_id: str, profile: str) -> Trans
         started=now.isoformat(),
         snapshot_id=snapshot_id,
         profile=profile,
+        root=str(root),
     )
 
 
@@ -150,7 +173,7 @@ def execute_plan(
         raise ExecutionError("restore", root, f"unknown conflict policy {conflict_policy!r}")
 
     root = root.resolve()
-    tx = new_transaction(storage_root, plan.snapshot_id, plan.profile)
+    tx = new_transaction(storage_root, plan.snapshot_id, plan.profile, root)
 
     records_by_rel = {}
     for record in manifest["files"]:
@@ -201,6 +224,8 @@ def execute_plan(
 def _backup_existing(tx: Transaction, target: Path, relative: str) -> None:
     """Preserve current target state inside the transaction backup area."""
     if not os.path.lexists(target):
+        # Did not exist before the restore; rollback must remove it.
+        tx.rollback.append({"path": relative, "type": "absent"})
         return
     if target.is_symlink():
         tx.rollback.append({
