@@ -2,65 +2,65 @@
 
 > Cross-distribution Linux state manager with selective, conflict-aware restoration.
 
-## 1. Visão geral
+## 1. Overview
 
-O projeto tem como objetivo reduzir o retrabalho causado por reinstalações, troca de distribuições Linux, troca de Desktop Environments e alterações de ambiente.
+The project aims to reduce the rework caused by system reinstallations, Linux distribution switches, Desktop Environment switches, and environment changes.
 
-A ferramenta deve capturar, classificar, versionar e restaurar o estado pessoal do usuário sem tratar todos os arquivos como equivalentes.
+The tool must capture, classify, version, and restore the user's personal state without treating all files as equivalent.
 
-O sistema deve permitir, por exemplo:
+The system must allow, for example:
 
-- Restaurar apenas arquivos pessoais.
-- Restaurar configurações de shell.
-- Restaurar ambiente de desenvolvimento.
-- Restaurar configurações de aplicações.
-- Restaurar KDE.
-- Restaurar GNOME.
-- Restaurar Hyprland.
-- Restaurar perfis compostos.
-- Restaurar apenas arquivos selecionados.
-- Ignorar caches e arquivos gerados.
-- Detectar conflitos antes da restauração.
-- Fazer backup antes de substituir arquivos.
-- Reverter uma restauração malsucedida.
+- Restoring only personal files.
+- Restoring shell configuration.
+- Restoring the development environment.
+- Restoring application configuration.
+- Restoring KDE.
+- Restoring GNOME.
+- Restoring Hyprland.
+- Restoring composite profiles.
+- Restoring only selected files.
+- Ignoring caches and generated files.
+- Detecting conflicts before restoration.
+- Backing up before replacing files.
+- Reverting an unsuccessful restore.
 
-O projeto deve ser independente de distribuição e evitar dependência excessiva de uma determinada implementação de desktop ou aplicação.
+The project must be distribution-independent and avoid excessive dependence on any particular desktop or application implementation.
 
 ---
 
-# 2. Princípio fundamental
+# 2. Fundamental principle
 
-A ferramenta NÃO deve reorganizar fisicamente o filesystem original do usuário.
+The tool must NOT physically reorganize the user's original filesystem.
 
-O filesystem existente deve ser tratado como fonte de verdade.
+The existing filesystem must be treated as the source of truth.
 
-A classificação e organização devem ocorrer por meio de:
+Classification and organization must occur through:
 
-- Manifestos.
-- Metadados.
-- Regras.
-- Perfis.
+- Manifests.
+- Metadata.
+- Rules.
+- Profiles.
 - Snapshots.
-- Mapeamentos de restauração.
+- Restore mappings.
 
-O projeto deve evitar mover arquivos do usuário apenas para facilitar o backup.
+The project must avoid moving user files merely to make backup easier.
 
-A estrutura original deve ser preservada.
+The original structure must be preserved.
 
 ---
 
-# 3. Problema que o projeto resolve
+# 3. Problem the project solves
 
-O usuário frequentemente troca:
+Users frequently switch:
 
-- Distribuição Linux.
+- Linux distribution.
 - Desktop Environment.
 - Window Manager.
-- Aplicações.
+- Applications.
 - Shell.
-- Ambiente de desenvolvimento.
+- Development environment.
 
-Exemplos:
+Examples:
 
 ```text
 KDE → Hyprland
@@ -70,32 +70,32 @@ Fedora → Arch
 Arch → Debian
 GNOME → KDE
 KDE → Hyprland
-````
+```
 
-Uma restauração ingênua de `~/.config` pode introduzir:
+A naive restore of `~/.config` can introduce:
 
-* Configurações incompatíveis.
-* Arquivos específicos de outro Desktop Environment.
-* Configurações específicas de uma distribuição.
-* Configurações específicas de hardware.
-* Cache antigo.
-* Estado gerado automaticamente.
-* Conflitos entre aplicações.
-* Arquivos que não deveriam existir no novo ambiente.
+* Incompatible configurations.
+* Files specific to another Desktop Environment.
+* Distribution-specific configurations.
+* Hardware-specific configurations.
+* Stale cache.
+* Automatically generated state.
+* Conflicts between applications.
+* Files that should not exist in the new environment.
 
-Portanto:
+Therefore:
 
 ```text
 Backup ≠ Restore
 ```
 
-O sistema deve entender que restaurar um estado Linux é diferente de simplesmente copiar arquivos.
+The system must understand that restoring a Linux state is different from simply copying files.
 
 ---
 
-# 4. Arquitetura conceitual
+# 4. Conceptual architecture
 
-O fluxo principal deve ser:
+The main flow must be:
 
 ```text
 Filesystem
@@ -125,37 +125,37 @@ Rollback if necessary
 
 ---
 
-# 5. Categorias de estado
+# 5. State categories
 
-Os arquivos devem ser classificados semanticamente.
+Files must be classified semantically.
 
-Não utilizar apenas extensão ou MIME type.
+Do not rely solely on extension or MIME type.
 
-A classificação deve considerar:
+Classification must consider:
 
-* Caminho.
-* Diretório.
-* Nome do arquivo.
-* Extensão.
+* Path.
+* Directory.
+* Filename.
+* Extension.
 * MIME type.
 * Symlink.
-* Permissões.
+* Permissions.
 * Owner.
-* ACL.
-* Extended attributes quando aplicável.
-* Aplicação relacionada.
-* Desktop Environment relacionado.
-* Distribuição relacionada.
-* Variáveis XDG.
-* Regras definidas pelo usuário.
+* ACLs.
+* Extended attributes when applicable.
+* Related application.
+* Related Desktop Environment.
+* Related distribution.
+* XDG variables.
+* User-defined rules.
 
 ---
 
 ## 5.1 Personal
 
-Dados pessoais do usuário.
+The user's personal data.
 
-Exemplos:
+Examples:
 
 ```text
 ~/Documents/
@@ -166,21 +166,21 @@ Exemplos:
 ~/Downloads/
 ```
 
-Comportamento padrão:
+Default behavior:
 
 ```text
 restore: merge
 ```
 
-Esses arquivos devem possuir baixa interferência na restauração.
+These files must have low interference with restoration.
 
 ---
 
 ## 5.2 Identity
 
-Arquivos relacionados à identidade digital.
+Files related to digital identity.
 
-Exemplos:
+Examples:
 
 ```text
 ~/.ssh/
@@ -189,25 +189,25 @@ Exemplos:
 ~/.config/git/
 ```
 
-Essa categoria exige tratamento especial.
+This category requires special handling.
 
-O sistema deve preservar:
+The system must preserve:
 
-* Permissões.
+* Permissions.
 * Owner.
 * Symlinks.
-* ACL quando aplicável.
-* Extended attributes quando aplicável.
+* ACLs when applicable.
+* Extended attributes when applicable.
 
-Operações envolvendo secrets devem exigir confirmação explícita quando necessário.
+Operations involving secrets must require explicit confirmation when necessary.
 
 ---
 
 ## 5.3 Shell
 
-Configurações do shell.
+Shell configuration.
 
-Exemplos:
+Examples:
 
 ```text
 ~/.bashrc
@@ -217,15 +217,15 @@ Exemplos:
 ~/.config/starship.toml
 ```
 
-Essa categoria deve ser independente do Desktop Environment.
+This category must be independent of the Desktop Environment.
 
 ---
 
 ## 5.4 Development
 
-Configurações relacionadas ao desenvolvimento.
+Development-related configuration.
 
-Exemplos:
+Examples:
 
 ```text
 ~/.config/nvim/
@@ -236,9 +236,9 @@ Exemplos:
 ~/.npm/
 ```
 
-O sistema deve reconhecer que determinadas configurações podem depender de software instalado.
+The system must recognize that certain configurations may depend on installed software.
 
-Exemplo:
+Example:
 
 ```json
 {
@@ -251,15 +251,15 @@ Exemplo:
 }
 ```
 
-A ausência da aplicação não deve impedir automaticamente a restauração de outras categorias.
+The absence of an application must not automatically prevent the restoration of other categories.
 
 ---
 
 # 5.5 Desktop
 
-Configurações específicas do ambiente gráfico.
+Graphical environment-specific configuration.
 
-Exemplos:
+Examples:
 
 ```text
 KDE
@@ -269,9 +269,9 @@ Sway
 XFCE
 ```
 
-Cada Desktop Environment deve possuir seu próprio perfil.
+Each Desktop Environment must have its own profile.
 
-Exemplo:
+Example:
 
 ```text
 desktop:kde
@@ -280,30 +280,30 @@ desktop:hyprland
 desktop:sway
 ```
 
-Por padrão, esses perfis devem ser mutuamente exclusivos.
+By default, these profiles must be mutually exclusive.
 
-Restaurar:
+Restoring:
 
 ```bash
 linux-state restore --profile desktop:hyprland
 ```
 
-não deve restaurar automaticamente:
+must not automatically restore:
 
 ```text
 ~/.config/kdeglobals
 ~/.config/plasma-org.kde.plasma.desktop-appletsrc
 ```
 
-A menos que o usuário solicite explicitamente.
+Unless explicitly requested by the user.
 
 ---
 
 # 5.6 Applications
 
-Configurações específicas de aplicações.
+Application-specific configuration.
 
-Exemplos:
+Examples:
 
 ```text
 Firefox
@@ -316,9 +316,9 @@ Discord
 Neovim
 ```
 
-Aplicações podem possuir seus próprios perfis.
+Applications may have their own profiles.
 
-Exemplo:
+Example:
 
 ```text
 application:firefox
@@ -330,9 +330,9 @@ application:nvim
 
 # 5.7 Machine-specific
 
-Configurações dependentes do hardware ou da máquina.
+Hardware or machine-dependent configuration.
 
-Exemplos potenciais:
+Potential examples:
 
 ```text
 GPU
@@ -344,15 +344,15 @@ Network
 Hardware-specific configuration
 ```
 
-Esses arquivos não devem ser considerados portáveis por padrão.
+These files must not be considered portable by default.
 
 ---
 
 # 5.8 Distribution-specific
 
-Configurações específicas da distribuição.
+Distribution-specific configuration.
 
-Exemplos conceituais:
+Conceptual examples:
 
 ```text
 Ubuntu
@@ -362,15 +362,15 @@ Debian
 openSUSE
 ```
 
-Esses arquivos devem possuir classificação própria e não devem ser restaurados automaticamente em outra distribuição.
+These files must have their own classification and must not be restored automatically on another distribution.
 
 ---
 
 # 5.9 Generated
 
-Arquivos que podem ser recriados automaticamente.
+Files that can be recreated automatically.
 
-Exemplos:
+Examples:
 
 ```text
 generated state
@@ -379,7 +379,7 @@ application databases
 runtime files
 ```
 
-Comportamento padrão:
+Default behavior:
 
 ```text
 restore: never
@@ -389,9 +389,9 @@ restore: never
 
 # 5.10 Cache
 
-Caches não devem ser restaurados por padrão.
+Caches must not be restored by default.
 
-Exemplos:
+Examples:
 
 ```text
 ~/.cache/
@@ -402,19 +402,19 @@ shader cache
 application cache
 ```
 
-Comportamento padrão:
+Default behavior:
 
 ```text
 restore: never
 ```
 
-O usuário poderá solicitar explicitamente sua inclusão.
+The user may explicitly request their inclusion.
 
 ---
 
-# 6. Portabilidade
+# 6. Portability
 
-Cada item deve possuir uma classificação de portabilidade.
+Each item must have a portability classification.
 
 ```text
 PORTABLE
@@ -426,7 +426,7 @@ CACHE
 PERSONAL
 ```
 
-Exemplo:
+Example:
 
 ```text
 ~/.gitconfig
@@ -445,23 +445,23 @@ GPU configuration
     → CACHE
 ```
 
-Isso permite separar:
+This allows separating:
 
 ```text
-"Quero levar meu ambiente"
+"I want to take my environment"
 
-de:
+from:
 
-"Quero levar minha máquina antiga inteira."
+"I want to take my entire old machine."
 ```
 
 ---
 
 # 7. Profiles
 
-Profiles representam conjuntos lógicos de configurações.
+Profiles represent logical sets of configuration.
 
-Exemplo:
+Example:
 
 ```text
 profiles/
@@ -475,9 +475,9 @@ profiles/
 └── applications/
 ```
 
-Profiles podem ser compostos.
+Profiles can be composed.
 
-Exemplo:
+Example:
 
 ```yaml
 profile: workstation-hyprland
@@ -490,7 +490,7 @@ extends:
   - applications:development
 ```
 
-Outro:
+Another:
 
 ```yaml
 profile: workstation-kde
@@ -503,15 +503,15 @@ extends:
   - applications:development
 ```
 
-Isso permite trocar o ambiente sem duplicar todas as configurações.
+This allows switching environments without duplicating all configuration.
 
 ---
 
 # 8. Discovery
 
-O módulo de discovery deve analisar o ambiente atual.
+The discovery module must analyze the current environment.
 
-Deve detectar:
+It must detect:
 
 ```text
 Files
@@ -535,15 +535,15 @@ Potential cache
 Potential generated files
 ```
 
-O discovery não deve modificar arquivos.
+Discovery must not modify files.
 
 ---
 
 # 9. Classification
 
-A classificação deve ser baseada em regras.
+Classification must be rule-based.
 
-Prioridade recomendada:
+Recommended priority:
 
 ```text
 Explicit user rule
@@ -563,31 +563,31 @@ MIME / extension
 Unknown
 ```
 
-Nunca utilizar apenas extensão como fonte de verdade.
+Never rely solely on extension as the source of truth.
 
-Exemplo:
+Example:
 
 ```text
 ~/.config/Code/User/settings.json
 ```
 
-deve ser reconhecido como configuração do VS Code.
+must be recognized as VS Code configuration.
 
-Enquanto:
+While:
 
 ```text
 ~/Projects/my-app/config.json
 ```
 
-deve ser tratado como arquivo do projeto.
+must be treated as a project file.
 
 ---
 
 # 10. Manifest
 
-O manifest é o principal mecanismo de descrição do estado.
+The manifest is the primary mechanism for describing state.
 
-Exemplo:
+Example:
 
 ```json
 {
@@ -609,7 +609,7 @@ Exemplo:
 }
 ```
 
-Exemplo de arquivo pessoal:
+Example of a personal file:
 
 ```json
 {
@@ -622,7 +622,7 @@ Exemplo de arquivo pessoal:
 }
 ```
 
-Exemplo de cache:
+Example of a cache:
 
 ```json
 {
@@ -639,9 +639,9 @@ Exemplo de cache:
 
 # 11. Snapshot
 
-Um snapshot representa o estado conhecido do usuário em determinado momento.
+A snapshot represents the known state of the user at a given moment.
 
-Exemplo:
+Example:
 
 ```text
 snapshots/
@@ -651,7 +651,7 @@ snapshots/
     └── data/
 ```
 
-Snapshots devem possuir:
+Snapshots must contain:
 
 ```text
 Timestamp
@@ -666,13 +666,13 @@ Manifest version
 Tool version
 ```
 
-Informações sensíveis devem ser tratadas cuidadosamente.
+Sensitive information must be handled carefully.
 
 ---
 
 # 12. Backup
 
-O sistema deve suportar:
+The system must support:
 
 ```text
 Full snapshots
@@ -684,19 +684,19 @@ Retention
 Integrity verification
 ```
 
-A implementação inicial pode utilizar snapshots completos para reduzir complexidade.
+The initial implementation may use full snapshots to reduce complexity.
 
-Deduplicação e incrementais podem ser adicionados posteriormente.
+Deduplication and incremental backups can be added later.
 
 ---
 
 # 13. Compression
 
-A implementação deve permitir diferentes algoritmos.
+The implementation must allow different algorithms.
 
-Priorizar formatos amplamente disponíveis e eficientes.
+Prioritize widely available and efficient formats.
 
-Possíveis opções:
+Possible options:
 
 ```text
 zstd
@@ -704,29 +704,29 @@ gzip
 xz
 ```
 
-A escolha deve ser configurável.
+The choice should be configurable.
 
-Para o MVP:
+For the MVP:
 
 ```text
 zstd
 ```
 
-pode ser o padrão.
+can be the default.
 
 ---
 
 # 14. Hashing
 
-Arquivos devem possuir hashes para verificar integridade.
+Files must have hashes to verify integrity.
 
-Preferir:
+Prefer:
 
 ```text
 SHA-256
 ```
 
-O hash deve permitir detectar:
+The hash must allow detecting:
 
 ```text
 Same
@@ -739,13 +739,13 @@ Corrupted
 
 # 15. Restore
 
-Restore nunca deve ser apenas:
+Restore must never be just:
 
 ```text
 copy backup → filesystem
 ```
 
-O processo deve ser:
+The process must be:
 
 ```text
 Snapshot
@@ -773,7 +773,7 @@ Verification
 
 # 16. Conflict detection
 
-Possíveis estados:
+Possible states:
 
 ```text
 NEW
@@ -784,7 +784,7 @@ MISSING
 SKIPPED
 ```
 
-Exemplo:
+Example:
 
 ```text
 Restore plan
@@ -799,7 +799,7 @@ CONFLICT  ~/.config/gtk-3.0/settings.ini
 
 # 17. Conflict resolution
 
-O sistema deve oferecer opções como:
+The system must offer options such as:
 
 ```text
 replace
@@ -809,7 +809,7 @@ merge
 skip
 ```
 
-Exemplo:
+Example:
 
 ```text
 [r] Replace
@@ -819,31 +819,31 @@ Exemplo:
 [s] Skip
 ```
 
-A opção padrão para arquivos importantes deve ser segura.
+The default option for important files must be safe.
 
-Nunca sobrescrever silenciosamente arquivos existentes.
+Never silently overwrite existing files.
 
 ---
 
 # 18. Dry run
 
-Toda operação de restauração deve permitir simulação.
+Every restore operation must allow simulation.
 
-Exemplo:
+Example:
 
 ```bash
 linux-state restore --profile hyprland --dry-run
 ```
 
-O comando deve mostrar exatamente o que seria alterado.
+The command must show exactly what would be changed.
 
-Nenhum arquivo deve ser modificado durante o dry run.
+No file must be modified during the dry run.
 
 ---
 
 # 19. Transactional restore
 
-Antes de modificar um arquivo existente:
+Before modifying an existing file:
 
 ```text
 current file
@@ -853,37 +853,37 @@ temporary backup
 apply new file
 ```
 
-Se alguma etapa falhar:
+If any step fails:
 
 ```text
 rollback
 ```
 
-deve restaurar o estado anterior.
+must restore the previous state.
 
-A operação deve ser considerada concluída apenas após a validação.
+The operation must be considered complete only after validation.
 
 ---
 
 # 20. Rollback
 
-Rollback deve permitir retornar ao estado anterior à restauração.
+Rollback must allow returning to the state prior to the restore.
 
-Exemplo:
+Example:
 
 ```bash
 linux-state rollback
 ```
 
-ou:
+or:
 
 ```bash
 linux-state rollback --transaction <id>
 ```
 
-Cada restore deve possuir um identificador de transação.
+Each restore must have a transaction identifier.
 
-Exemplo:
+Example:
 
 ```text
 transaction: 2026-08-22T22:30:11-03:00-8F3A
@@ -893,7 +893,7 @@ transaction: 2026-08-22T22:30:11-03:00-8F3A
 
 # 21. Verification
 
-Após uma restauração:
+After a restore:
 
 ```text
 Check existence
@@ -906,9 +906,9 @@ Check skipped files
 Check failed files
 ```
 
-O sistema deve gerar um relatório.
+The system must generate a report.
 
-Exemplo:
+Example:
 
 ```text
 Restore completed.
@@ -926,9 +926,9 @@ Integrity:
 
 # 22. CLI
 
-O CLI deve ser a primeira interface.
+The CLI must be the primary interface.
 
-Exemplos:
+Examples:
 
 ```bash
 linux-state scan
@@ -972,16 +972,16 @@ linux-state verify
 
 ---
 
-# 23. Exemplos de uso
+# 23. Usage examples
 
-## Backup antes de trocar de distribuição
+## Backup before switching distributions
 
 ```bash
 linux-state scan
 linux-state snapshot
 ```
 
-Depois da instalação:
+After installation:
 
 ```bash
 linux-state scan
@@ -989,14 +989,14 @@ linux-state plan --profile personal
 linux-state restore --profile personal
 ```
 
-Depois:
+Then:
 
 ```bash
 linux-state plan --profile shell
 linux-state restore --profile shell
 ```
 
-E finalmente:
+And finally:
 
 ```bash
 linux-state plan --profile development
@@ -1005,23 +1005,23 @@ linux-state restore --profile development
 
 ---
 
-# 24. Troca de KDE para Hyprland
+# 24. Switching from KDE to Hyprland
 
-Antes da troca:
+Before switching:
 
 ```bash
 linux-state snapshot
 ```
 
-Depois de instalar Hyprland:
+After installing Hyprland:
 
 ```bash
 linux-state restore --profile desktop:hyprland --dry-run
 ```
 
-O sistema deve identificar apenas configurações relacionadas ao Hyprland.
+The system must identify only Hyprland-related configuration.
 
-Não deve restaurar automaticamente:
+It must not automatically restore:
 
 ```text
 KDE
@@ -1032,27 +1032,27 @@ KDE-specific state
 
 ---
 
-# 25. Troca de Hyprland para KDE
+# 25. Switching from Hyprland to KDE
 
-O processo inverso deve funcionar da mesma maneira:
+The reverse process must work the same way:
 
 ```bash
 linux-state restore --profile desktop:kde --dry-run
 ```
 
-O perfil Hyprland não deve ser restaurado.
+The Hyprland profile must not be restored.
 
 ---
 
-# 26. Profiles compostos
+# 26. Composite profiles
 
-Exemplo:
+Example:
 
 ```bash
 linux-state restore --profile workstation-hyprland
 ```
 
-O profile pode representar:
+The profile may represent:
 
 ```text
 personal
@@ -1062,7 +1062,7 @@ hyprland
 selected applications
 ```
 
-Mas não:
+But not:
 
 ```text
 KDE
@@ -1073,31 +1073,31 @@ cache
 
 ---
 
-# 27. Regras de segurança
+# 27. Safety rules
 
-O sistema deve seguir estas regras:
+The system must follow these rules:
 
-1. Nunca modificar arquivos durante discovery.
-2. Nunca sobrescrever arquivos silenciosamente.
-3. Nunca restaurar caches por padrão.
-4. Nunca restaurar configurações de outro Desktop Environment automaticamente.
-5. Nunca assumir que uma configuração é portátil apenas porque é válida.
-6. Nunca restaurar secrets sem tratamento apropriado.
-7. Sempre permitir dry-run.
-8. Sempre gerar um plano antes de operações destrutivas.
-9. Sempre permitir rollback.
-10. Sempre verificar o resultado após restore.
-11. Preservar permissões quando necessário.
-12. Preservar symlinks.
-13. Nunca remover arquivos simplesmente porque eles não existem no snapshot.
-14. Operações destrutivas devem exigir confirmação explícita.
-15. O filesystem original nunca deve ser reorganizado apenas para facilitar o backup.
+1. Never modify files during discovery.
+2. Never silently overwrite files.
+3. Never restore caches by default.
+4. Never automatically restore configuration from another Desktop Environment.
+5. Never assume a configuration is portable just because it is valid.
+6. Never restore secrets without appropriate handling.
+7. Always allow dry-run.
+8. Always generate a plan before destructive operations.
+9. Always allow rollback.
+10. Always verify the result after restore.
+11. Preserve permissions when necessary.
+12. Preserve symlinks.
+13. Never remove files simply because they are absent from the snapshot.
+14. Destructive operations must require explicit confirmation.
+15. The original filesystem must never be reorganized merely to make backup easier.
 
 ---
 
-# 28. Configuração
+# 28. Configuration
 
-Exemplo:
+Example:
 
 ```yaml
 version: 1
@@ -1140,9 +1140,9 @@ profiles:
 
 ---
 
-# 29. Estrutura do projeto
+# 29. Project structure
 
-Uma implementação inicial pode utilizar:
+An initial implementation may use:
 
 ```text
 linux-state/
@@ -1177,11 +1177,11 @@ linux-state/
 
 ---
 
-# 30. Interfaces principais
+# 30. Main interfaces
 
-A arquitetura deve separar responsabilidades.
+The architecture must separate responsibilities.
 
-Exemplo conceitual:
+Conceptual example:
 
 ```text
 DiscoveryEngine
@@ -1203,15 +1203,15 @@ VerificationEngine
 RollbackManager
 ```
 
-Cada componente deve possuir responsabilidade única.
+Each component must have a single responsibility.
 
 ---
 
-# 31. Extensibilidade
+# 31. Extensibility
 
-Novas aplicações e Desktop Environments devem poder ser adicionados sem modificar o núcleo.
+New applications and Desktop Environments must be addable without modifying the core.
 
-Exemplo:
+Example:
 
 ```text
 rules/desktop/hyprland.yaml
@@ -1219,7 +1219,7 @@ rules/desktop/kde.yaml
 rules/desktop/gnome.yaml
 ```
 
-Ou:
+Or:
 
 ```text
 rules/applications/neovim.yaml
@@ -1227,15 +1227,15 @@ rules/applications/vscode.yaml
 rules/applications/firefox.yaml
 ```
 
-Isso permite evolução incremental.
+This allows incremental evolution.
 
 ---
 
-# 32. Dados sensíveis
+# 32. Sensitive data
 
-O sistema deve identificar possíveis dados sensíveis.
+The system must identify potentially sensitive data.
 
-Exemplos:
+Examples:
 
 ```text
 SSH keys
@@ -1247,21 +1247,21 @@ Authentication files
 Certificates
 ```
 
-Esses arquivos devem receber classificação:
+These files must receive the classification:
 
 ```text
 SECRET
 ```
 
-e tratamento específico.
+and specific handling.
 
-O sistema não deve imprimir conteúdo sensível nos logs.
+The system must not print sensitive content in logs.
 
 ---
 
 # 33. Logs
 
-Os logs devem registrar:
+Logs must record:
 
 ```text
 Operation
@@ -1273,7 +1273,7 @@ Error
 Transaction ID
 ```
 
-Nunca registrar:
+Never record:
 
 ```text
 Passwords
@@ -1286,9 +1286,9 @@ Secret contents
 
 # 34. Performance
 
-O sistema deve ser capaz de lidar com grandes diretórios sem carregar todo o conteúdo em memória.
+The system must handle large directories without loading all content into memory.
 
-Priorizar:
+Prioritize:
 
 ```text
 Streaming
@@ -1299,15 +1299,15 @@ Deduplication
 Exclusion rules
 ```
 
-Caches e diretórios conhecidos por conter grande quantidade de arquivos temporários devem possuir regras específicas.
+Caches and directories known to contain large amounts of temporary files must have specific rules.
 
 ---
 
 # 35. Trade-offs
 
-## Simplicidade vs. recursos
+## Simplicity vs. features
 
-O MVP deve priorizar:
+The MVP must prioritize:
 
 ```text
 Correctness
@@ -1316,7 +1316,7 @@ Predictability
 Rollback
 ```
 
-antes de:
+before:
 
 ```text
 GUI
@@ -1332,31 +1332,31 @@ Automatic dependency installation
 Full snapshots:
 
 ```text
-+ Simples
-+ Fácil de recuperar
-+ Fácil de entender
-- Mais espaço
++ Simpler
++ Easy to recover
++ Easy to understand
+- More space
 ```
 
 Incremental:
 
 ```text
-+ Menor consumo de armazenamento
-- Mais complexidade
-- Restore mais complexo
++ Lower storage consumption
+- More complexity
+- More complex restore
 ```
 
-O MVP deve começar com snapshots completos.
+The MVP must start with full snapshots.
 
 ---
 
 # 36. MVP
 
-O MVP deve conter apenas:
+The MVP must contain only:
 
 ```text
 [ ] Discovery
-[ ] Classification básica
+[ ] Basic classification
 [ ] Manifest
 [ ] Snapshot
 [ ] Profiles
@@ -1369,7 +1369,7 @@ O MVP deve conter apenas:
 [ ] CLI
 ```
 
-Não implementar inicialmente:
+Do not implement initially:
 
 ```text
 [ ] GUI
@@ -1385,7 +1385,7 @@ Não implementar inicialmente:
 
 # 37. MVP workflow
 
-Fluxo mínimo:
+Minimal flow:
 
 ```bash
 linux-state scan
@@ -1429,7 +1429,7 @@ linux-state verify
 
 ↓
 
-Em caso de problema:
+In case of problems:
 
 ```bash
 linux-state rollback
@@ -1437,7 +1437,7 @@ linux-state rollback
 
 ---
 
-# 38. Exemplo de manifest completo
+# 38. Complete manifest example
 
 ```json
 {
@@ -1491,35 +1491,35 @@ linux-state rollback
 
 # 39. Success criteria
 
-O projeto será considerado bem-sucedido quando for possível:
+The project will be considered successful when it is possible to:
 
-### Caso 1 - Distro hopping
+### Case 1 - Distro hopping
 
-Instalar uma nova distribuição e recuperar o ambiente pessoal sem copiar manualmente todo o `home`.
+Install a new distribution and recover the personal environment without manually copying the entire `home`.
 
-### Caso 2 - Desktop hopping
+### Case 2 - Desktop hopping
 
-Trocar:
+Switch:
 
 ```text
 KDE → Hyprland
 ```
 
-sem restaurar configurações específicas do KDE.
+without restoring KDE-specific configuration.
 
-### Caso 3 - Retorno
+### Case 3 - Return
 
-Voltar:
+Switch back:
 
 ```text
 Hyprland → KDE
 ```
 
-sem perder as configurações anteriores.
+without losing previous configuration.
 
-### Caso 4 - Restore seletivo
+### Case 4 - Selective restore
 
-Restaurar somente:
+Restore only:
 
 ```text
 Personal
@@ -1527,7 +1527,7 @@ Shell
 Development
 ```
 
-sem restaurar:
+without restoring:
 
 ```text
 Desktop
@@ -1535,35 +1535,35 @@ Cache
 Machine-specific
 ```
 
-### Caso 5 - Conflito
+### Case 5 - Conflict
 
-Se um arquivo já existir e tiver sido modificado:
+If a file already exists and has been modified:
 
 ```text
 CONFLICT
 ```
 
-deve ser detectado antes da substituição.
+must be detected before replacement.
 
-### Caso 6 - Falha
+### Case 6 - Failure
 
-Se uma restauração falhar no meio:
+If a restore fails midway:
 
 ```bash
 linux-state rollback
 ```
 
-deve retornar o sistema ao estado anterior.
+must return the system to its previous state.
 
 ---
 
-# 40. Princípio final
+# 40. Final principle
 
-O objetivo do projeto não é transportar uma instalação Linux inteira.
+The goal of the project is not to transport an entire Linux installation.
 
-O objetivo é transportar o que é importante para o usuário sem transportar automaticamente o que pertence à máquina anterior.
+The goal is to transport what is important to the user without automatically carrying over what belongs to the previous machine.
 
-Em outras palavras:
+In other words:
 
 ```text
 Do not restore the old machine.
@@ -1571,7 +1571,7 @@ Do not restore the old machine.
 Restore the user's state.
 ```
 
-A ferramenta deve preservar:
+The tool must preserve:
 
 ```text
 Identity
@@ -1582,7 +1582,7 @@ Application preferences
 Selected desktop configuration
 ```
 
-e evitar transportar automaticamente:
+and avoid automatically transporting:
 
 ```text
 Cache
@@ -1593,7 +1593,7 @@ Unrelated desktop environments
 Temporary files
 ```
 
-O sistema deve sempre favorecer:
+The system must always favor:
 
 ```text
 safe restoration
@@ -1601,7 +1601,7 @@ over
 complete restoration
 ```
 
-e:
+and:
 
 ```text
 predictability
@@ -1609,15 +1609,10 @@ over
 automation
 ```
 
-A regra principal é:
+The main rule is:
 
 ```text
 Discover → Classify → Plan → Preview → Approve → Apply → Verify → Rollback
 ```
 
-Esse fluxo deve permanecer como a base arquitetural do projeto.
-
-````
-
-
-
+This flow must remain the architectural foundation of the project.
