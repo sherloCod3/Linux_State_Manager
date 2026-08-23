@@ -1646,46 +1646,6 @@ If these questions cannot be answered from the repository, the project context i
 
 ````
 
-### Eu faria ainda uma pequena mudança de processo
-
-Eu teria **três níveis de contexto**, em vez de tentar colocar tudo no `AGENTS.md`:
-
-```text
-AGENTS.md
-    ↓
-Regras permanentes de engenharia
-
-SPEC.md
-    ↓
-O que o produto deve fazer
-
-docs/PROJECT-STATUS.md
-    ↓
-Onde estamos agora
-````
-
-E talvez, futuramente:
-
-```text
-docs/adr/
-├── ADR-001-filesystem-source-of-truth.md
-├── ADR-002-profile-isolation.md
-├── ADR-003-transactional-restore.md
-└── ...
-```
-
-Aí fica muito bonito porque cada documento responde a uma pergunta diferente:
-
-| Arquivo             | Pergunta                           |
-| ------------------- | ---------------------------------- |
-| `AGENTS.md`         | **Como devo trabalhar?**           |
-| `SPEC.md`           | **O que estamos construindo?**     |
-| `PROJECT-STATUS.md` | **Onde estamos?**                  |
-| `ADR-*`             | **Por que decidimos fazer assim?** |
-| Código + testes     | **O que realmente funciona?**      |
-
-E eu colocaria uma regra particularmente importante no agente:
-
 > **Nunca assumir que "código implementado" significa "funcionalidade concluída".**
 
 O agente só pode avançar a sequência quando conseguir dizer:
@@ -1699,3 +1659,590 @@ validado
     =
 concluído
 ```
+
+---
+
+# 46. Project Organization and Repository Hygiene
+
+The repository must remain organized, intentional, and suitable for public GitHub publication.
+
+The repository is part of the product.
+
+A future contributor should be able to understand:
+
+- What the project does.
+- Why it exists.
+- How it is structured.
+- How to run it.
+- How to test it.
+- What is currently implemented.
+- What is planned.
+- Which decisions have been made.
+- Which files are safe to modify.
+- Which files are generated.
+
+Do not rely on conversation history to explain the repository.
+
+---
+
+## 46.1 Repository Quality
+
+Keep the repository:
+
+- Clean.
+- Minimal.
+- Predictable.
+- Documented.
+- Reproducible.
+- Free of temporary artifacts.
+- Free of abandoned experiments.
+- Free of unnecessary generated files.
+
+Do not commit files merely because they exist locally.
+
+Before adding a file, determine whether it belongs to:
+
+```text
+source code
+tests
+documentation
+configuration
+examples
+development tooling
+generated output
+temporary data
+````
+
+If its purpose is unclear, do not add it.
+
+---
+
+## 46.2 Canonical Repository Structure
+
+Prefer a structure similar to:
+
+```text
+linux-state/
+├── src/
+├── tests/
+├── rules/
+├── docs/
+│   ├── PROJECT-STATUS.md
+│   └── adr/
+├── examples/
+├── scripts/
+├── README.md
+├── SPEC.md
+├── AGENTS.md
+├── LICENSE
+├── CONTRIBUTING.md
+├── CHANGELOG.md
+├── .gitignore
+└── project configuration files
+```
+
+| Arquivo             | Pergunta                           |
+| ------------------- | ---------------------------------- |
+| `AGENTS.md`         | **Como devo trabalhar?**           |
+| `SPEC.md`           | **O que estamos construindo?**     |
+| `PROJECT-STATUS.md` | **Onde estamos?**                  |
+| `ADR-*`             | **Por que decidimos fazer assim?** |
+| Código + testes     | **O que realmente funciona?**      |
+
+Do not create directories without a clear responsibility.
+
+Avoid unnecessary nesting.
+
+---
+
+## 46.3 Documentation Responsibilities
+
+Each document must have a clear purpose.
+
+```text
+README.md
+    Public project introduction and usage.
+
+SPEC.md
+    Product and functional specification.
+
+AGENTS.md
+    Engineering rules for coding agents and contributors.
+
+docs/PROJECT-STATUS.md
+    Current implementation state and continuation briefing.
+
+docs/adr/
+    Important architectural decisions.
+
+CONTRIBUTING.md
+    Contribution workflow and repository conventions.
+
+CHANGELOG.md
+    User-visible changes between releases.
+```
+
+Do not duplicate the same information across multiple documents without a reason.
+
+If information belongs in one canonical document, reference it rather than copying it.
+
+---
+
+## 46.4 README Quality
+
+The README must eventually allow a new developer to understand the project without reading the entire source tree.
+
+At minimum, document:
+
+```text
+Project purpose
+Key features
+Current status
+Supported environments
+Installation
+Basic usage
+Example workflow
+Development setup
+Testing
+Configuration
+Known limitations
+Roadmap or project status reference
+License
+```
+
+Do not advertise features that are not implemented.
+
+Use explicit status when appropriate:
+
+```text
+Implemented
+Experimental
+Planned
+Not supported
+```
+
+---
+
+## 46.5 Public Repository Standard
+
+Assume the repository may be reviewed by:
+
+* A senior developer.
+* A systems engineer.
+* A security engineer.
+* A potential contributor.
+* A recruiter.
+* A future maintainer.
+* A stranger discovering the project on GitHub.
+
+Code should therefore communicate:
+
+```text
+intent
+safety
+scope
+trade-offs
+maintainability
+```
+
+Do not optimize the repository merely to look impressive.
+
+Prefer evidence of good engineering over excessive architecture.
+
+---
+
+## 46.6 No Know-It-All Engineering
+
+Do not introduce abstractions, patterns, dependencies, or terminology merely to make the project appear more sophisticated.
+
+Avoid:
+
+```text
+unnecessary design patterns
+premature plugin systems
+excessive interfaces
+generic frameworks
+unnecessary dependency injection
+speculative abstractions
+over-engineered configuration systems
+```
+
+A simple implementation is preferred when it solves the actual problem.
+
+The project should demonstrate engineering judgment, not architectural vocabulary.
+
+---
+
+## 46.7 No Orphaned Code
+
+Do not leave:
+
+```text
+unused modules
+dead code
+unused dependencies
+abandoned prototypes
+temporary scripts
+duplicate implementations
+```
+
+in the repository.
+
+If an experiment is useful for reference, either:
+
+1. Convert it into a documented test/example.
+2. Move it into an appropriate experimental area.
+3. Remove it.
+
+Do not keep obsolete code "just in case".
+
+Git provides history.
+
+---
+
+## 46.8 Temporary Files
+
+Temporary files must not become part of the repository.
+
+Examples:
+
+```text
+*.tmp
+*.bak
+*.swp
+debug output
+local snapshots
+test archives
+generated manifests
+local logs
+coverage output
+cache directories
+IDE metadata
+```
+
+Use `.gitignore` appropriately.
+
+Do not use `.gitignore` to hide files that should actually be cleaned up.
+
+---
+
+## 46.9 Generated Files
+
+Clearly distinguish source files from generated files.
+
+Generated artifacts should generally not be committed unless there is a documented reason.
+
+If generated files must be committed:
+
+* Document why.
+* Document how they are generated.
+* Ensure generation is reproducible.
+* Keep generated output separate from source.
+
+---
+
+## 46.10 Configuration and Secrets
+
+Never commit:
+
+```text
+passwords
+API keys
+private keys
+tokens
+personal credentials
+machine-specific secrets
+local absolute paths
+private backup data
+```
+
+Provide safe examples instead:
+
+```text
+config.example.yaml
+.env.example
+```
+
+Example configuration files must never contain real credentials.
+
+---
+
+## 46.11 Environment Independence
+
+Do not commit assumptions tied to the developer's machine.
+
+Avoid:
+
+```text
+/home/alexandre/...
+/mnt/...
+/media/...
+machine-specific hostnames
+local usernames
+private IP addresses
+local hardware identifiers
+```
+
+Use:
+
+```text
+~
+$HOME
+environment variables
+relative paths
+configuration
+```
+
+where appropriate.
+
+---
+
+## 46.12 Scripts
+
+Scripts must have a clear purpose.
+
+Prefer:
+
+```text
+scripts/
+├── dev/
+├── test/
+└── release/
+```
+
+only when the number of scripts justifies grouping.
+
+Do not create a script for a command that is simpler to document directly.
+
+Scripts should:
+
+* Fail clearly.
+* Avoid destructive defaults.
+* Explain required dependencies.
+* Avoid machine-specific assumptions.
+
+---
+
+## 46.13 Tests
+
+Tests belong under the test structure defined by the project.
+
+Do not mix:
+
+```text
+temporary experiments
+manual test scripts
+unit tests
+integration tests
+```
+
+without clear separation.
+
+Tests must be reproducible.
+
+Tests must not depend on the developer's real home directory.
+
+Filesystem tests should use isolated temporary directories.
+
+---
+
+## 46.14 Git Discipline
+
+Use Git as a development and review tool.
+
+Before committing:
+
+```text
+git status
+git diff
+git diff --check
+tests
+```
+
+Review the complete diff.
+
+Do not commit unrelated changes.
+
+Do not commit generated artifacts accidentally.
+
+Do not rewrite history merely to hide normal development mistakes unless explicitly required.
+
+Prefer small, meaningful commits.
+
+---
+
+## 46.15 Commit Quality
+
+Commit messages should describe the change, not the thought process.
+
+Prefer:
+
+```text
+feat: add restore plan generation
+fix: prevent symlink traversal during discovery
+test: cover modified-file conflict detection
+docs: document rollback workflow
+refactor: isolate filesystem adapter
+```
+
+Avoid:
+
+```text
+stuff
+changes
+fix
+update
+final
+final-final
+important
+```
+
+Do not create artificial commits merely to increase commit count.
+
+---
+
+## 46.16 Diff Hygiene
+
+Before declaring work complete, inspect:
+
+```text
+git status
+git diff
+git diff --stat
+```
+
+The final diff should contain only changes related to the task.
+
+Remove:
+
+* Debug code.
+* Temporary logging.
+* Unused imports.
+* Dead code.
+* Accidental formatting changes.
+* Generated files.
+* Experimental leftovers.
+
+---
+
+## 46.17 Dependency Hygiene
+
+When adding a dependency:
+
+1. Explain why it is needed.
+2. Verify that it is actually used.
+3. Prefer mature and maintained dependencies.
+4. Avoid duplicate libraries solving the same problem.
+5. Update lockfiles appropriately.
+6. Verify tests after installation.
+
+Remove dependencies that are no longer required.
+
+---
+
+## 46.18 Repository Invariants
+
+Maintain these invariants:
+
+```text
+No secrets.
+No unexplained generated files.
+No abandoned prototypes.
+No unrelated changes.
+No machine-specific paths.
+No undocumented major architectural decisions.
+No claims of functionality that is not implemented.
+No tests that modify the real user environment.
+```
+
+---
+
+## 46.19 Before Publishing
+
+Before considering the repository ready for GitHub, perform a publication review.
+
+Check:
+
+```text
+[ ] README is accurate.
+[ ] Installation instructions work.
+[ ] Basic usage works.
+[ ] Tests pass.
+[ ] No secrets are present.
+[ ] No personal paths are present.
+[ ] No temporary files are committed.
+[ ] .gitignore is appropriate.
+[ ] License exists.
+[ ] Project status is accurate.
+[ ] Known limitations are documented.
+[ ] Unsupported features are not advertised.
+[ ] Git diff contains no accidental changes.
+[ ] Repository structure is understandable.
+[ ] A new developer can reproduce the development environment.
+```
+
+The repository should be publishable without requiring private conversation context.
+
+---
+
+## 46.20 Professional Standard
+
+The goal is not to make the repository look large.
+
+The goal is to make it look intentional.
+
+Prefer:
+
+```text
+small
+clear
+tested
+documented
+reproducible
+safe
+```
+
+over:
+
+```text
+large
+abstract
+clever
+feature-heavy
+```
+
+A reviewer should be able to see that every important file, dependency, abstraction, and architectural decision has a reason.
+
+````
+
+### An almost "sacred" rule:
+
+**the agent cannot consider a task complete without performing a repository hygiene review.**
+
+The flow would be:
+
+```text
+Understand 
+↓
+Baseline 
+↓
+Implement 
+↓
+Test 
+↓
+Validate 
+↓
+Update PROJECT-STATUS.md 
+↓
+Review diff 
+↓
+Repository hygiene 
+↓
+Commit
+````
+
+The sign of seniority I would look for is:
+
+> **"Everything here seems to be where it is for a reason."**
+
+This phrase, for me, is the best organizational rule for this project.
