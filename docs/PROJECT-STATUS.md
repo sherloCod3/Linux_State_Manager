@@ -8,8 +8,8 @@ snapshots and selectively restores user state safely
 
 ## Current Phase
 
-MVP-04 — Profiles (COMPLETE, validated)
-Next phase: MVP-05 — Restore Planner + Conflict Detection + Dry Run
+MVP-05 — Restore Planner + Conflict Detection + Dry Run (COMPLETE, validated)
+Next phase: MVP-06 — Restore Executor + Backup Before Replace
 
 ## Implementation Status
 
@@ -23,7 +23,7 @@ Next phase: MVP-05 — Restore Planner + Conflict Detection + Dry Run
 | CLI (snapshot, list) | Validated |
 | Classification | Validated   |
 | Profiles     | Validated   |
-| Restore plan | Not started |
+| Restore plan | Validated   |
 | Restore      | Not started |
 | Verification | Not started |
 | Rollback     | Not started |
@@ -31,24 +31,22 @@ Next phase: MVP-05 — Restore Planner + Conflict Detection + Dry Run
 ## Last Known Good State
 
 Milestone:
-MVP-04 - Profiles
+MVP-05 - Restore Planner, Conflict Detection, Dry Run
 
 Validated:
-- YAML profiles with `extends` composition; nested extends resolved.
-- Bare undefined names act as category selectors (`--profile shell` works
-  without a definition file).
-- Selector forms: bare category, `desktop:<env>`, `applications:<app>`.
-- Circular extends detected and rejected (incl. self-reference).
-- Desktop mutual exclusion: two different environments in one profile are
-  rejected unless `allow_multiple_desktops: true`.
-- Entry selection: hyprland profile excludes KDE state and vice versa
-  (SPEC success cases 2 and 3); cache never selected unless explicitly
-  requested; unknown never selected.
-- CLI: `scan --profile NAME [--profiles-dir DIR]` filters output and reports
-  selection counts; conflicts fail with explicit ERROR.
+- Pure planner: compares stored snapshot vs current state; writes nothing.
+- Conflict states verified: NEW (missing), SAME (identical),
+  MODIFIED (mode-only change), CONFLICT (content/symlink-target/type change).
+- Policies honored: restore=never → SKIPPED; secrets (review) → SKIPPED.
+- Profile restriction: hyprland profile excludes KDE entries in plans.
+- Snapshot root must match plan target root (mismatch rejected explicitly).
+- Planning provably does not modify the tree or storage.
+- CLI dry run: `linux-state plan <id> --root R` prints deterministic actions
+  and summary; unknown snapshot fails with explicit ERROR.
+- Snapshot manifests now carry their own id.
 
 Tests:
-- 107 passing
+- 123 passing
 - 0 failing
 
 Last validation:
@@ -56,20 +54,21 @@ Last validation:
 
 ## Current Work
 
-Task: none active — MVP-04 complete.
+Task: none active — MVP-05 complete.
 
-Next task: MVP-05 — Restore Planner + Conflict Detection + Dry Run.
+Next task: MVP-06 — Restore Executor + Backup Before Replace.
 
 Do not implement:
-- Actual file replacement or restore execution (MVP-06).
-- Rollback (MVP-07). Automatic merge.
+- Automatic merge of configuration files.
+- Rollback command (MVP-07) — but the executor must record enough
+  transaction information for rollback to be built on top.
 
 ## Next Step
 
-Implement `linux_state.planner`: pure restore planning from a stored snapshot
-manifest + resolved profile + current-state discovery, producing actions
-NEW / SAME / MODIFIED / CONFLICT / SKIPPED. Add `linux-state plan --snapshot
-<id> --profile <name>` as the dry-run surface (planning only; no writes).
+Implement `linux_state.executor`: execute an approved plan transactionally.
+Every replace is preceded by a backup of the existing file inside the
+transaction directory; failures stop the run and leave recoverable state.
+Requires explicit `--approve` (no silent destructive execution).
 
 ## Architectural Decisions
 
@@ -87,7 +86,7 @@ See `docs/adr/`:
 
 ## Tests Executed
 
-- 107 pytest tests (discovery, manifest, snapshot, storage, classification,
-  profiles, integration, CLI) — all passing (2026-08-23).
-- End-to-end: hyprstation profile scan selects only Hyprland + shell entries
-  from a mixed KDE/Hyprland tree.
+- 123 pytest tests (discovery, manifest, snapshot, storage, classification,
+  profiles, planner, integration, CLI) — all passing (2026-08-23).
+- End-to-end dry run: snapshot → mutate tree → plan reports
+  CONFLICT (modified), NEW (deleted), SAME (untouched).

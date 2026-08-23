@@ -16,6 +16,7 @@ Layout:
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -63,3 +64,19 @@ def metadata_file(storage_root: Path, snapshot_id: str) -> Path:
 
 def data_dir(storage_root: Path, snapshot_id: str) -> Path:
     return snapshot_path(storage_root, snapshot_id) / "data"
+
+
+def load_manifest(storage_root: Path, snapshot_id: str) -> dict:
+    """Load a stored snapshot manifest as a dict."""
+    path = manifest_file(storage_root, snapshot_id)
+    if not path.is_file():
+        raise FileNotFoundError(f"manifest not found for snapshot {snapshot_id}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_metadata(storage_root: Path, snapshot_id: str) -> dict:
+    """Load a stored snapshot metadata document."""
+    path = metadata_file(storage_root, snapshot_id)
+    if not path.is_file():
+        raise FileNotFoundError(f"metadata not found for snapshot {snapshot_id}")
+    return json.loads(path.read_text(encoding="utf-8"))

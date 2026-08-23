@@ -171,6 +171,70 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_plan(args: argparse.Namespace) -> int:
+    from linux_state.planner import build_plan
+    from linux_state.profiles import ProfileResolver, load_profiles
+    from linux_state.storage import load_manifest
+
+    root = Path(args.root).expanduser()
+    if not root.is_dir():
+        print(f"ERROR: not a directory: {root}", file=sys.stderr)
+        return 1
+
+    storage_root = Path(args.storage).expanduser() if args.storage else default_storage_root()
+
+    try:
+        manifest = load_manifest(storage_root, args.snapshot)
+    except (FileNotFoundError, ValueError) as exc:
+        print(
+            f"ERROR\nOperation: plan\nPath: {storage_root / 'snapshots' / args.snapshot}\n"
+            f"Reason: {exc}\nAction: check the snapshot id with 'linux-state list'.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if args.profile:
+        try:
+            resolved = _resolve_profile(args.profile, args.profiles_dir)
+        except ProfileError as exc:
+            print(
+                f"ERROR\nOperation: profile resolution\nPath: {exc.source}\n"
+                f"Reason: {exc.reason}\nAction: fix the profile definition and retry.",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        # No profile given: select all restorable categories; policies
+        # (never/review) still apply inside the planner.
+        from linux_state.profiles import ResolvedProfile, Selector
+
+        resolved = ResolvedProfile(name="__all__", selectors=tuple(
+            Selector("category", category)
+            for category in ("personal", "identity", "shell", "development",
+                             "application", "desktop")
+        ))
+
+    try:
+        plan = build_plan(manifest, resolved, root)
+    except ValueError as exc:
+        print(
+            f"ERROR\nOperation: plan\nPath: {root}\n"
+            f"Reason: {exc}\nAction: pass --root matching the snapshot root.",
+            file=sys.stderr,
+        )
+        return 1
+
+    home = Path.home()
+    for action in plan.actions:
+        suffix = f" ({action.reason})" if action.action == "SKIPPED" and action.reason else ""
+        print(f"{action.action:<9} {action.path}{suffix}")
+
+    counts = plan.counts()
+    summary = ", ".join(f"{name}: {count}" for name, count in sorted(counts.items()))
+    print(f"\nPlan summary -> {summary or 'no actions'}")
+    return 0
+
+
 def cmd_list(args: argparse.Namespace) -> int:
     storage_root = Path(args.storage).expanduser() if args.storage else default_storage_root()
     ids = list_snapshots(storage_root)
@@ -275,6 +339,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show per-snapshot file presence.",
     )
     list_cmd.set_defaults(func=cmd_list)
+
+    plan_cmd = sub.add_parser(
+        "plan",
+        help="Dry-run: plan a restore from a snapshot (no changes made).",
+    )
+    plan_cmd.add_argument("snapshot", metavar="SNAPSHOT_ID", help="Snapshot to restore.")
+    plan_cmd.add_argument(
+        "--root",
+        default=str(Path.home()),
+        help="Target directory; must match the snapshot root.",
+    )
+    plan_cmd.add_argument(
+        "--profile",
+        metavar="NAME",
+        help="Restrict the plan to a profile (default: all restorable categories).",
+    )
+    plan_cmd.add_argument(
+        "--profiles-dir",
+        metavar="DIR",
+        help="Profiles directory (default: $XDG_CONFIG_HOME/linux-state/profiles).",
+    )
+    plan_cmd.add_argument(
+        "--storage",
+        metavar="PATH",
+        help="Storage root (default: $XDG_DATA_HOME/linux-state).",
+    )
+    plan_cmd.set_defaults(func=cmd_plan)
 
     return parser
 

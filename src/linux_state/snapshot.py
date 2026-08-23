@@ -167,6 +167,7 @@ def create_snapshot(
             include_hashes=hash_files,
             classifier=classifier,
             xdg=xdg,
+            snapshot_metadata={"id": snapshot_id},
         )
         metadata = collect_metadata(root)
         (staging_dir / "manifest.json").write_text(
