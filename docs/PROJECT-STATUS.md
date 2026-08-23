@@ -8,14 +8,16 @@ snapshots and selectively restores user state safely
 
 ## Current Phase
 
-MVP-01 — Discovery + Manifest
+MVP-01 — Discovery + Manifest (COMPLETE, validated)
+Next phase: MVP-02 — Snapshot + Storage
 
 ## Implementation Status
 
 | Component    | Status      |
 | ------------ | ----------- |
-| Discovery    | IN PROGRESS |
-| Manifest     | PENDING     |
+| Discovery    | Validated   |
+| Manifest     | Validated   |
+| CLI (scan)   | Validated   |
 | Snapshot     | Not started |
 | Classification | Not started |
 | Profiles     | Not started |
@@ -23,40 +25,47 @@ MVP-01 — Discovery + Manifest
 | Restore      | Not started |
 | Verification | Not started |
 | Rollback     | Not started |
-| CLI          | SKELETON    |
 
 ## Last Known Good State
 
-Milestone: none yet (project skeleton being created)
+Milestone:
+MVP-01 - Discovery and Manifest
 
 Validated:
-- Nothing yet.
+- Read-only scan detects regular files, directories, hidden/dotfiles.
+- Symlinks recorded as symlinks; directory symlinks never traversed.
+- Broken symlinks detected and flagged, not raised.
+- Permissions captured (e.g. 0600 preserved in manifest).
+- SHA-256 streaming hashing of regular files (--no-hash supported).
+- Manifest generation is deterministic (byte-identical across runs).
+- Manifest written atomically via temp file + rename.
+- Scan provably does not modify the scanned tree (mtime/mode/inode snapshot test).
+- Unreadable directories raise explicit DiscoveryError with operation/path/reason.
 
 Tests:
-- 0 passing / 0 failing
+- 26 passing
+- 0 failing
+
+Last validation:
+2026-08-23
 
 ## Current Work
 
-Task: MVP-01 — read-only discovery and deterministic manifest generation.
+Task: none active — MVP-01 complete.
 
-Completed:
-- Project skeleton initialized (pyproject, package layout, git repo).
-
-Remaining:
-- discovery module (read-only traversal).
-- manifest module (deterministic JSON output).
-- CLI `scan` command.
-- Test suite against temporary directory trees only.
+Next task: MVP-02 — Snapshot + Storage.
 
 Do not implement:
-- Any file modification, restore, or snapshot write behavior in this milestone
-  beyond writing the manifest to the storage location when explicitly requested.
+- Any file modification or restore behavior.
+- Incremental snapshots, deduplication, compression beyond zstd default choice
+  (deferred per SPEC §12/§35).
 
 ## Next Step
 
-Implement `linux_state.discovery`: streaming, read-only traversal that detects
-regular files, directories, hidden entries, symlinks (never followed),
-permissions, size and SHA-256 hashes.
+Implement `linux_state.snapshot` + `linux_state.storage`: full snapshot layout
+(`snapshots/<id>/manifest.json`, `metadata.json`, `data/`) with snapshot
+metadata (timestamp, hostname, distro, kernel, user) and integrity verification,
+plus the `linux-state snapshot` CLI command.
 
 ## Architectural Decisions
 
@@ -87,4 +96,6 @@ Status: Accepted (not yet implemented)
 
 ## Tests Executed
 
-- None yet.
+- 26 pytest tests (discovery, manifest, CLI) — all passing (2026-08-23).
+- End-to-end CLI run against a constructed temp tree: correct counts,
+  verbose listing, manifest JSON verified.
