@@ -1,0 +1,12 @@
+# Example composite profile: KDE workstation.
+#
+# Copy to ~/.config/linux-state/profiles/ to use:
+#   linux-state scan --profile workstation-kde -v
+
+profile: workstation-kde
+
+extends:
+  - personal
+  - shell
+  - development
+  - desktop:kde

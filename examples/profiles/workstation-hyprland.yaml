@@ -1,0 +1,15 @@
+# Example composite profile: Hyprland workstation.
+#
+# Copy to ~/.config/linux-state/profiles/ to use:
+#   linux-state scan --profile workstation-hyprland -v
+
+profile: workstation-hyprland
+
+extends:
+  - personal
+  - shell
+  - development
+  - desktop:hyprland
+
+# Desktop environments are mutually exclusive by default; this profile
+# selects exactly one, so no override is needed.

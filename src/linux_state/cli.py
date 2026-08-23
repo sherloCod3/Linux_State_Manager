@@ -7,6 +7,7 @@ results. It never touches the filesystem directly.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from collections import Counter
 from pathlib import Path
@@ -15,6 +16,7 @@ from linux_state import __version__
 from linux_state.classification import RuleSet, XdgDirs, default_rule_files, load_ruleset
 from linux_state.discovery import DiscoveryError, Kind, discover
 from linux_state.manifest import build_manifest, entry_to_display, write_manifest
+from linux_state.profiles import ProfileError, ProfileResolver, load_profiles, select_entries
 from linux_state.snapshot import SnapshotError, create_snapshot, new_snapshot_id
 from linux_state.storage import (
     default_storage_root,
@@ -24,7 +26,8 @@ from linux_state.storage import (
 )
 
 
-def _print_summary(entries, root: Path, verbose: bool, ruleset=None, xdg=None) -> None:
+def _print_summary(entries, root: Path, verbose: bool, ruleset=None, xdg=None,
+                   selected=None) -> None:
     counts = Counter(e.kind for e in entries)
     print(f"Scanned: {root}")
     print(f"  files:      {counts.get(Kind.FILE, 0)}")
@@ -40,8 +43,10 @@ def _print_summary(entries, root: Path, verbose: bool, ruleset=None, xdg=None) -
     if verbose:
         home = Path.home()
         for entry in entries:
-            relative = entry.path.relative_to(root)
-            result = ruleset.classify(relative.as_posix(), xdg, root)
+            relative = entry.path.relative_to(root).as_posix()
+            result = ruleset.classify(relative, xdg, root)
+            if selected is not None and (relative, result) not in selected:
+                continue
             tag = f" [{result.category}/{result.rule_id}]"
             print(f"  {entry.kind.value:<9} {entry_to_display(entry, home)}{tag}")
 
@@ -58,6 +63,20 @@ def _build_classifier(rules_dir: str | None) -> tuple[RuleSet, XdgDirs] | None:
     xdg = XdgDirs()
     ruleset = load_ruleset(files)
     return ruleset, xdg
+
+
+def _resolve_profile(name: str, profiles_dir: str | None):
+    if profiles_dir:
+        directory = Path(profiles_dir).expanduser()
+        profiles = load_profiles(directory)
+    else:
+        default_dir = (
+            Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
+            / "linux-state"
+            / "profiles"
+        )
+        profiles = load_profiles(default_dir) if default_dir.is_dir() else {}
+    return ProfileResolver(profiles).resolve(name)
 
 
 def cmd_scan(args: argparse.Namespace) -> int:
@@ -82,7 +101,27 @@ def cmd_scan(args: argparse.Namespace) -> int:
         )
         return 2
 
-    _print_summary(entries, root, args.verbose, ruleset, xdg)
+    selected = None
+    if args.profile:
+        try:
+            resolved = _resolve_profile(args.profile, args.profiles_dir)
+        except ProfileError as exc:
+            print(
+                f"ERROR\nOperation: profile resolution\nPath: {exc.source}\n"
+                f"Reason: {exc.reason}\nAction: fix the profile definition and retry.",
+                file=sys.stderr,
+            )
+            return 2
+        classified = [
+            (e.path.relative_to(root).as_posix(), ruleset.classify(
+                e.path.relative_to(root).as_posix(), xdg, root
+            ))
+            for e in entries
+        ]
+        selected = set(select_entries(classified, resolved))
+        print(f"Profile: {resolved.name} ({len(selected)} of {len(entries)} entries)")
+
+    _print_summary(entries, root, args.verbose, ruleset, xdg, selected)
 
     if args.json:
         manifest = build_manifest(root, entries, classifier=ruleset, xdg=xdg)
@@ -178,6 +217,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--rules",
         metavar="DIR",
         help="User rules directory; takes precedence over bundled defaults.",
+    )
+    scan.add_argument(
+        "--profile",
+        metavar="NAME",
+        help="Only consider entries selected by this profile.",
+    )
+    scan.add_argument(
+        "--profiles-dir",
+        metavar="DIR",
+        help="Profiles directory (default: $XDG_CONFIG_HOME/linux-state/profiles).",
     )
     scan.add_argument(
         "-v",

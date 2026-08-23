@@ -8,8 +8,8 @@ snapshots and selectively restores user state safely
 
 ## Current Phase
 
-MVP-03 — Classification + Rules (COMPLETE, validated)
-Next phase: MVP-04 — Profiles
+MVP-04 — Profiles (COMPLETE, validated)
+Next phase: MVP-05 — Restore Planner + Conflict Detection + Dry Run
 
 ## Implementation Status
 
@@ -21,8 +21,8 @@ Next phase: MVP-04 — Profiles
 | Storage      | Validated   |
 | Snapshot     | Validated   |
 | CLI (snapshot, list) | Validated |
-| Classification | Validated |
-| Profiles     | Not started |
+| Classification | Validated   |
+| Profiles     | Validated   |
 | Restore plan | Not started |
 | Restore      | Not started |
 | Verification | Not started |
@@ -31,23 +31,24 @@ Next phase: MVP-04 — Profiles
 ## Last Known Good State
 
 Milestone:
-MVP-03 - Classification and Rules
+MVP-04 - Profiles
 
 Validated:
-- Rule engine: ordered YAML rules, first match wins, deterministic.
-- Priority: user rules directory beats bundled defaults (AGENTS §34).
-- Explainability: every classification records rule id + source file.
-- Conservative defaults: unknown → review (never auto-restorable).
-- Cache/generated → never; secrets (ssh, gnupg) → secret/review.
-- Desktop isolation: hyprland.conf → hyprland only; plasma files → kde only,
-  never cross-classified into other environments.
-- XDG fallback: cache/state dirs classified even without explicit rules;
-  custom XDG_CACHE_HOME respected.
-- Classification persisted in scan manifests and snapshot manifests.
-- Invalid rules rejected explicitly (missing match key, unknown category).
+- YAML profiles with `extends` composition; nested extends resolved.
+- Bare undefined names act as category selectors (`--profile shell` works
+  without a definition file).
+- Selector forms: bare category, `desktop:<env>`, `applications:<app>`.
+- Circular extends detected and rejected (incl. self-reference).
+- Desktop mutual exclusion: two different environments in one profile are
+  rejected unless `allow_multiple_desktops: true`.
+- Entry selection: hyprland profile excludes KDE state and vice versa
+  (SPEC success cases 2 and 3); cache never selected unless explicitly
+  requested; unknown never selected.
+- CLI: `scan --profile NAME [--profiles-dir DIR]` filters output and reports
+  selection counts; conflicts fail with explicit ERROR.
 
 Tests:
-- 80 passing
+- 107 passing
 - 0 failing
 
 Last validation:
@@ -55,21 +56,20 @@ Last validation:
 
 ## Current Work
 
-Task: none active — MVP-03 complete.
+Task: none active — MVP-04 complete.
 
-Next task: MVP-04 — Profiles.
+Next task: MVP-05 — Restore Planner + Conflict Detection + Dry Run.
 
 Do not implement:
-- Restore planning or any file replacement (MVP-05/06).
-- Automatic merging of configuration files.
-- Secret-content detection heuristics (AGENTS §15).
+- Actual file replacement or restore execution (MVP-06).
+- Rollback (MVP-07). Automatic merge.
 
 ## Next Step
 
-Implement `linux_state.profiles`: YAML profiles with composition via
-`extends` (e.g. `workstation-hyprland` extends personal + shell + development +
-desktop:hyprland), desktop profile mutual exclusion by default, and a
-`profile resolve` path usable by the future restore planner.
+Implement `linux_state.planner`: pure restore planning from a stored snapshot
+manifest + resolved profile + current-state discovery, producing actions
+NEW / SAME / MODIFIED / CONFLICT / SKIPPED. Add `linux-state plan --snapshot
+<id> --profile <name>` as the dry-run surface (planning only; no writes).
 
 ## Architectural Decisions
 
@@ -87,7 +87,7 @@ See `docs/adr/`:
 
 ## Tests Executed
 
-- 80 pytest tests (discovery, manifest, snapshot, storage, classification,
-  integration, CLI) — all passing (2026-08-23).
-- End-to-end: snapshot of mixed KDE+Hyprland+secret+cache tree; every entry
-  classified correctly with DE isolation and conservative defaults.
+- 107 pytest tests (discovery, manifest, snapshot, storage, classification,
+  profiles, integration, CLI) — all passing (2026-08-23).
+- End-to-end: hyprstation profile scan selects only Hyprland + shell entries
+  from a mixed KDE/Hyprland tree.
