@@ -1,0 +1,39 @@
+# KDE Plasma desktop environment.
+
+version: 1
+
+rules:
+  - id: de-kde-plasma
+    match: "~/.config/plasma-*"
+    category: desktop
+    environment: kde
+    portability: environment
+    restore: backup-and-replace
+
+  - id: de-kde-globals
+    match: "~/.config/kdeglobals"
+    category: desktop
+    environment: kde
+    portability: environment
+    restore: backup-and-replace
+
+  - id: de-kde-kwin
+    match: "~/.config/kwinrc"
+    category: desktop
+    environment: kde
+    portability: environment
+    restore: backup-and-replace
+
+  - id: de-kde-shortcuts
+    match: "~/.config/kglobalshortcutsrc"
+    category: desktop
+    environment: kde
+    portability: environment
+    restore: backup-and-replace
+
+  - id: de-kde-dir
+    match: "~/.config/kde/**"
+    category: desktop
+    environment: kde
+    portability: environment
+    restore: backup-and-replace

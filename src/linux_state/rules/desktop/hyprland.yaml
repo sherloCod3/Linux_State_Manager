@@ -1,0 +1,18 @@
+# Hyprland window manager.
+
+version: 1
+
+rules:
+  - id: de-hyprland-config
+    match: "~/.config/hypr/**"
+    category: desktop
+    environment: hyprland
+    portability: environment
+    restore: backup-and-replace
+
+  - id: de-hyprland-dir
+    match: "~/.config/hypr"
+    category: desktop
+    environment: hyprland
+    portability: environment
+    restore: backup-and-replace

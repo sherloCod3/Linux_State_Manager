@@ -1,0 +1,140 @@
+# Default classification rules (bundled).
+#
+# Patterns are fnmatch patterns relative to the scanned directory
+# (typically $HOME). The '~/' prefix is accepted and stripped.
+# First matching rule wins; user-provided rule directories take
+# precedence over this file (loaded before it).
+#
+# Restore policies:
+#   backup-and-replace : safe to replace after backing up
+#   merge              : low interference, merge semantics
+#   never              : do not restore
+#   review             : requires explicit user approval
+
+version: 1
+
+rules:
+  # --- Secrets: conservative handling, never auto-restored ---
+  - id: secret-ssh-dir
+    match: "~/.ssh"
+    category: secret
+    portability: secret
+    restore: review
+
+  - id: secret-ssh
+    match: "~/.ssh/**"
+    category: secret
+    portability: secret
+    restore: review
+
+  - id: secret-gnupg-dir
+    match: "~/.gnupg"
+    category: secret
+    portability: secret
+    restore: review
+
+  - id: secret-gnupg
+    match: "~/.gnupg/**"
+    category: secret
+    portability: secret
+    restore: review
+
+  # --- Cache / generated: never restored by default ---
+  - id: cache-xdg-cache
+    match: "~/.cache/**"
+    category: cache
+    portability: cache
+    restore: never
+
+  - id: cache-xdg-cache-dir
+    match: "~/.cache"
+    category: cache
+    portability: cache
+    restore: never
+
+  - id: generated-state
+    match: "~/.local/state/**"
+    category: generated
+    portability: generated
+    restore: never
+
+  # --- Personal data ---
+  - id: personal-home-dirs
+    match: "~/Documents/**"
+    category: personal
+    portability: personal
+    restore: merge
+
+  - id: personal-pictures
+    match: "~/Pictures/**"
+    category: personal
+    portability: personal
+    restore: merge
+
+  - id: personal-videos
+    match: "~/Videos/**"
+    category: personal
+    portability: personal
+    restore: merge
+
+  - id: personal-music
+    match: "~/Music/**"
+    category: personal
+    portability: personal
+    restore: merge
+
+  - id: personal-downloads
+    match: "~/Downloads/**"
+    category: personal
+    portability: personal
+    restore: merge
+
+  - id: personal-projects
+    match: "~/Projects/**"
+    category: personal
+    portability: personal
+    restore: merge
+
+  # --- Shell ---
+  - id: shell-bashrc
+    match: "~/.bashrc"
+    category: shell
+    portability: portable
+    restore: backup-and-replace
+
+  - id: shell-zshrc
+    match: "~/.zshrc"
+    category: shell
+    portability: portable
+    restore: backup-and-replace
+
+  - id: shell-profile
+    match: "~/.profile"
+    category: shell
+    portability: portable
+    restore: backup-and-replace
+
+  - id: shell-fish
+    match: "~/.config/fish/**"
+    category: shell
+    portability: portable
+    restore: backup-and-replace
+
+  - id: shell-starship
+    match: "~/.config/starship.toml"
+    category: shell
+    portability: portable
+    restore: backup-and-replace
+
+  # --- Identity ---
+  - id: identity-gitconfig
+    match: "~/.gitconfig"
+    category: identity
+    portability: portable
+    restore: backup-and-replace
+
+  - id: identity-git-config-dir
+    match: "~/.config/git/**"
+    category: identity
+    portability: portable
+    restore: backup-and-replace

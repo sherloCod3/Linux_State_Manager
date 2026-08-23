@@ -1,0 +1,11 @@
+# Neovim configuration.
+
+version: 1
+
+rules:
+  - id: app-neovim
+    match: "~/.config/nvim/**"
+    category: development
+    application: neovim
+    portability: portable
+    restore: backup-and-replace

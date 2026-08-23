@@ -1,0 +1,25 @@
+# GNOME desktop environment.
+
+version: 1
+
+rules:
+  - id: de-gnome-dconf
+    match: "~/.config/dconf/**"
+    category: desktop
+    environment: gnome
+    portability: environment
+    restore: backup-and-replace
+
+  - id: de-gnome-gtk3
+    match: "~/.config/gtk-3.0/**"
+    category: desktop
+    environment: gnome
+    portability: environment
+    restore: backup-and-replace
+
+  - id: de-gnome-gtk4
+    match: "~/.config/gtk-4.0/**"
+    category: desktop
+    environment: gnome
+    portability: environment
+    restore: backup-and-replace

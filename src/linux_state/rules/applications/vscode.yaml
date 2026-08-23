@@ -1,0 +1,15 @@
+# VS Code user configuration.
+#
+# Only the User settings area is treated as application state;
+# workspace caches under Code/ are not matched here and fall through
+# to conservative defaults.
+
+version: 1
+
+rules:
+  - id: app-vscode-user
+    match: "~/.config/Code/User/**"
+    category: application
+    application: vscode
+    portability: portable
+    restore: backup-and-replace

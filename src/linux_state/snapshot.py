@@ -135,6 +135,8 @@ def create_snapshot(
     storage_root: Path,
     *,
     hash_files: bool = True,
+    classifier=None,
+    xdg=None,
 ) -> str:
     """Create a full snapshot of *root* inside *storage_root*.
 
@@ -163,6 +165,8 @@ def create_snapshot(
             root,
             entries,
             include_hashes=hash_files,
+            classifier=classifier,
+            xdg=xdg,
         )
         metadata = collect_metadata(root)
         (staging_dir / "manifest.json").write_text(

@@ -8,8 +8,8 @@ snapshots and selectively restores user state safely
 
 ## Current Phase
 
-MVP-02 — Snapshot + Storage (COMPLETE, validated)
-Next phase: MVP-03 — Classification + Rules
+MVP-03 — Classification + Rules (COMPLETE, validated)
+Next phase: MVP-04 — Profiles
 
 ## Implementation Status
 
@@ -21,7 +21,7 @@ Next phase: MVP-03 — Classification + Rules
 | Storage      | Validated   |
 | Snapshot     | Validated   |
 | CLI (snapshot, list) | Validated |
-| Classification | Not started |
+| Classification | Validated |
 | Profiles     | Not started |
 | Restore plan | Not started |
 | Restore      | Not started |
@@ -31,22 +31,23 @@ Next phase: MVP-03 — Classification + Rules
 ## Last Known Good State
 
 Milestone:
-MVP-02 - Snapshot and Storage
+MVP-03 - Classification and Rules
 
 Validated:
-- Full snapshots created under `$XDG_DATA_HOME/linux-state/snapshots/<id>/`.
-- Snapshot layout: manifest.json, metadata.json, data/.
-- Atomic creation: failures leave no partial snapshot (staging + rename).
-- Source tree provably unmodified after snapshot.
-- Modes preserved (e.g. 0600); symlinks recreated as symlinks, including
-  broken ones; directory symlinks never traversed.
-- Metadata: timestamp, hostname, distribution, kernel, architecture, user,
-  tool version; no file contents or secrets included.
-- verify_snapshot re-hashes stored data and detects tampering.
-- `linux-state snapshot` and `linux-state list` CLI validated end-to-end.
+- Rule engine: ordered YAML rules, first match wins, deterministic.
+- Priority: user rules directory beats bundled defaults (AGENTS §34).
+- Explainability: every classification records rule id + source file.
+- Conservative defaults: unknown → review (never auto-restorable).
+- Cache/generated → never; secrets (ssh, gnupg) → secret/review.
+- Desktop isolation: hyprland.conf → hyprland only; plasma files → kde only,
+  never cross-classified into other environments.
+- XDG fallback: cache/state dirs classified even without explicit rules;
+  custom XDG_CACHE_HOME respected.
+- Classification persisted in scan manifests and snapshot manifests.
+- Invalid rules rejected explicitly (missing match key, unknown category).
 
 Tests:
-- 51 passing
+- 80 passing
 - 0 failing
 
 Last validation:
@@ -54,22 +55,21 @@ Last validation:
 
 ## Current Work
 
-Task: none active — MVP-02 complete.
+Task: none active — MVP-03 complete.
 
-Next task: MVP-03 — Classification + Rules.
+Next task: MVP-04 — Profiles.
 
 Do not implement:
 - Restore planning or any file replacement (MVP-05/06).
-- Incremental snapshots, deduplication, encryption (deferred, SPEC §12).
+- Automatic merging of configuration files.
 - Secret-content detection heuristics (AGENTS §15).
 
 ## Next Step
 
-Implement `linux_state.classification`: data-driven YAML rules
-(`rules/default.yaml`, `rules/desktop/*.yaml`, `rules/applications/*.yaml`)
-with priority ordering (user > application > DE > system > XDG > path >
-unknown), explainable results (rule that matched), and conservative defaults
-(cache/generated → never restore; unknown → review).
+Implement `linux_state.profiles`: YAML profiles with composition via
+`extends` (e.g. `workstation-hyprland` extends personal + shell + development +
+desktop:hyprland), desktop profile mutual exclusion by default, and a
+`profile resolve` path usable by the future restore planner.
 
 ## Architectural Decisions
 
@@ -78,6 +78,7 @@ See `docs/adr/`:
 - ADR-001 — Filesystem is the source of truth (no reorganization).
 - ADR-002 — Python 3 stdlib-first; PyYAML only external MVP dependency.
 - ADR-003 — Restore planner/executor separation (accepted, not yet built).
+- ADR-004 — Rules bundled inside the package; user dirs override by precedence.
 
 ## Known Limitations
 
@@ -86,7 +87,7 @@ See `docs/adr/`:
 
 ## Tests Executed
 
-- 51 pytest tests (discovery, manifest, snapshot, storage, CLI) — all passing
-  (2026-08-23).
-- End-to-end CLI runs against constructed temp trees: scan, snapshot, list;
-  layout, mode/symlink preservation and tampering detection verified.
+- 80 pytest tests (discovery, manifest, snapshot, storage, classification,
+  integration, CLI) — all passing (2026-08-23).
+- End-to-end: snapshot of mixed KDE+Hyprland+secret+cache tree; every entry
+  classified correctly with DE isolation and conservative defaults.
