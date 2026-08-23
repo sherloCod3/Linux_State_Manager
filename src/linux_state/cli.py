@@ -14,6 +14,13 @@ from pathlib import Path
 from linux_state import __version__
 from linux_state.discovery import DiscoveryError, Kind, discover
 from linux_state.manifest import build_manifest, entry_to_display, write_manifest
+from linux_state.snapshot import SnapshotError, create_snapshot, new_snapshot_id
+from linux_state.storage import (
+    default_storage_root,
+    list_snapshots,
+    manifest_file,
+    metadata_file,
+)
 
 
 def _print_summary(entries, root: Path, verbose: bool) -> None:
@@ -60,6 +67,53 @@ def cmd_scan(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_snapshot(args: argparse.Namespace) -> int:
+    root = Path(args.root).expanduser()
+    if not root.is_dir():
+        print(f"ERROR: not a directory: {root}", file=sys.stderr)
+        return 1
+
+    storage_root = Path(args.storage).expanduser() if args.storage else default_storage_root()
+
+    try:
+        snapshot_id = create_snapshot(root, storage_root, hash_files=not args.no_hash)
+    except DiscoveryError as exc:
+        print(
+            f"ERROR\nOperation: {exc.operation}\nPath: {exc.path}\n"
+            f"Reason: {exc.reason}\nAction: check permissions and retry.",
+            file=sys.stderr,
+        )
+        return 2
+    except SnapshotError as exc:
+        print(
+            f"ERROR\nOperation: {exc.operation}\nPath: {exc.path}\n"
+            f"Reason: {exc.reason}\nAction: fix the issue and retry.",
+            file=sys.stderr,
+        )
+        return 2
+
+    print(f"Snapshot created: {snapshot_id}")
+    print(f"Storage: {storage_root / 'snapshots' / snapshot_id}")
+    return 0
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    storage_root = Path(args.storage).expanduser() if args.storage else default_storage_root()
+    ids = list_snapshots(storage_root)
+    if not ids:
+        print("No snapshots found.")
+        return 0
+    for snapshot_id in ids:
+        if args.verbose:
+            manifest = manifest_file(storage_root, snapshot_id)
+            metadata = metadata_file(storage_root, snapshot_id)
+            print(f"{snapshot_id}  manifest={'yes' if manifest.is_file() else 'MISSING'}  "
+                  f"metadata={'yes' if metadata.is_file() else 'MISSING'}")
+        else:
+            print(snapshot_id)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="linux-state",
@@ -92,6 +146,41 @@ def build_parser() -> argparse.ArgumentParser:
         help="List every discovered entry.",
     )
     scan.set_defaults(func=cmd_scan)
+
+    snapshot = sub.add_parser(
+        "snapshot",
+        help="Create a full snapshot of a directory tree.",
+    )
+    snapshot.add_argument(
+        "--root",
+        default=str(Path.home()),
+        help="Directory to capture (default: $HOME).",
+    )
+    snapshot.add_argument(
+        "--storage",
+        metavar="PATH",
+        help="Storage root (default: $XDG_DATA_HOME/linux-state).",
+    )
+    snapshot.add_argument(
+        "--no-hash",
+        action="store_true",
+        help="Skip SHA-256 hashing.",
+    )
+    snapshot.set_defaults(func=cmd_snapshot)
+
+    list_cmd = sub.add_parser("list", help="List stored snapshots.")
+    list_cmd.add_argument(
+        "--storage",
+        metavar="PATH",
+        help="Storage root (default: $XDG_DATA_HOME/linux-state).",
+    )
+    list_cmd.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Show per-snapshot file presence.",
+    )
+    list_cmd.set_defaults(func=cmd_list)
 
     return parser
 

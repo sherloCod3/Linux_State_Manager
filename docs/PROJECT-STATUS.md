@@ -8,8 +8,8 @@ snapshots and selectively restores user state safely
 
 ## Current Phase
 
-MVP-01 — Discovery + Manifest (COMPLETE, validated)
-Next phase: MVP-02 — Snapshot + Storage
+MVP-02 — Snapshot + Storage (COMPLETE, validated)
+Next phase: MVP-03 — Classification + Rules
 
 ## Implementation Status
 
@@ -18,7 +18,9 @@ Next phase: MVP-02 — Snapshot + Storage
 | Discovery    | Validated   |
 | Manifest     | Validated   |
 | CLI (scan)   | Validated   |
-| Snapshot     | Not started |
+| Storage      | Validated   |
+| Snapshot     | Validated   |
+| CLI (snapshot, list) | Validated |
 | Classification | Not started |
 | Profiles     | Not started |
 | Restore plan | Not started |
@@ -29,21 +31,22 @@ Next phase: MVP-02 — Snapshot + Storage
 ## Last Known Good State
 
 Milestone:
-MVP-01 - Discovery and Manifest
+MVP-02 - Snapshot and Storage
 
 Validated:
-- Read-only scan detects regular files, directories, hidden/dotfiles.
-- Symlinks recorded as symlinks; directory symlinks never traversed.
-- Broken symlinks detected and flagged, not raised.
-- Permissions captured (e.g. 0600 preserved in manifest).
-- SHA-256 streaming hashing of regular files (--no-hash supported).
-- Manifest generation is deterministic (byte-identical across runs).
-- Manifest written atomically via temp file + rename.
-- Scan provably does not modify the scanned tree (mtime/mode/inode snapshot test).
-- Unreadable directories raise explicit DiscoveryError with operation/path/reason.
+- Full snapshots created under `$XDG_DATA_HOME/linux-state/snapshots/<id>/`.
+- Snapshot layout: manifest.json, metadata.json, data/.
+- Atomic creation: failures leave no partial snapshot (staging + rename).
+- Source tree provably unmodified after snapshot.
+- Modes preserved (e.g. 0600); symlinks recreated as symlinks, including
+  broken ones; directory symlinks never traversed.
+- Metadata: timestamp, hostname, distribution, kernel, architecture, user,
+  tool version; no file contents or secrets included.
+- verify_snapshot re-hashes stored data and detects tampering.
+- `linux-state snapshot` and `linux-state list` CLI validated end-to-end.
 
 Tests:
-- 26 passing
+- 51 passing
 - 0 failing
 
 Last validation:
@@ -51,43 +54,30 @@ Last validation:
 
 ## Current Work
 
-Task: none active — MVP-01 complete.
+Task: none active — MVP-02 complete.
 
-Next task: MVP-02 — Snapshot + Storage.
+Next task: MVP-03 — Classification + Rules.
 
 Do not implement:
-- Any file modification or restore behavior.
-- Incremental snapshots, deduplication, compression beyond zstd default choice
-  (deferred per SPEC §12/§35).
+- Restore planning or any file replacement (MVP-05/06).
+- Incremental snapshots, deduplication, encryption (deferred, SPEC §12).
+- Secret-content detection heuristics (AGENTS §15).
 
 ## Next Step
 
-Implement `linux_state.snapshot` + `linux_state.storage`: full snapshot layout
-(`snapshots/<id>/manifest.json`, `metadata.json`, `data/`) with snapshot
-metadata (timestamp, hostname, distro, kernel, user) and integrity verification,
-plus the `linux-state snapshot` CLI command.
+Implement `linux_state.classification`: data-driven YAML rules
+(`rules/default.yaml`, `rules/desktop/*.yaml`, `rules/applications/*.yaml`)
+with priority ordering (user > application > DE > system > XDG > path >
+unknown), explainable results (rule that matched), and conservative defaults
+(cache/generated → never restore; unknown → review).
 
 ## Architectural Decisions
 
-### ADR-001 - Filesystem is the source of truth
+See `docs/adr/`:
 
-Decision: The tool never reorganizes the user's filesystem; state is described
-via manifests/metadata stored separately.
-
-Status: Accepted
-
-### ADR-002 - Python 3 stdlib-first implementation
-
-Decision: Implement in Python 3.10+ using the standard library; PyYAML is the
-only external dependency for MVP.
-
-Status: Accepted
-
-### ADR-003 - Planner/executor separation (future restore)
-
-Decision: Restore planning must be pure and separate from execution.
-
-Status: Accepted (not yet implemented)
+- ADR-001 — Filesystem is the source of truth (no reorganization).
+- ADR-002 — Python 3 stdlib-first; PyYAML only external MVP dependency.
+- ADR-003 — Restore planner/executor separation (accepted, not yet built).
 
 ## Known Limitations
 
@@ -96,6 +86,7 @@ Status: Accepted (not yet implemented)
 
 ## Tests Executed
 
-- 26 pytest tests (discovery, manifest, CLI) — all passing (2026-08-23).
-- End-to-end CLI run against a constructed temp tree: correct counts,
-  verbose listing, manifest JSON verified.
+- 51 pytest tests (discovery, manifest, snapshot, storage, CLI) — all passing
+  (2026-08-23).
+- End-to-end CLI runs against constructed temp trees: scan, snapshot, list;
+  layout, mode/symlink preservation and tampering detection verified.
