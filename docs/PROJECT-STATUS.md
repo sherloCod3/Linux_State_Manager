@@ -8,8 +8,8 @@ snapshots and selectively restores user state safely
 
 ## Current Phase
 
-MVP-05 — Restore Planner + Conflict Detection + Dry Run (COMPLETE, validated)
-Next phase: MVP-06 — Restore Executor + Backup Before Replace
+MVP-06 — Restore Executor + Backup Before Replace (COMPLETE, validated)
+Next phase: MVP-07 — Verification Report + Rollback Command
 
 ## Implementation Status
 
@@ -24,29 +24,35 @@ Next phase: MVP-06 — Restore Executor + Backup Before Replace
 | Classification | Validated   |
 | Profiles     | Validated   |
 | Restore plan | Validated   |
-| Restore      | Not started |
+| Restore      | Validated   |
 | Verification | Not started |
 | Rollback     | Not started |
 
 ## Last Known Good State
 
 Milestone:
-MVP-05 - Restore Planner, Conflict Detection, Dry Run
+MVP-06 - Restore Executor and Backup Before Replace
 
 Validated:
-- Pure planner: compares stored snapshot vs current state; writes nothing.
-- Conflict states verified: NEW (missing), SAME (identical),
-  MODIFIED (mode-only change), CONFLICT (content/symlink-target/type change).
-- Policies honored: restore=never → SKIPPED; secrets (review) → SKIPPED.
-- Profile restriction: hyprland profile excludes KDE entries in plans.
-- Snapshot root must match plan target root (mismatch rejected explicitly).
-- Planning provably does not modify the tree or storage.
-- CLI dry run: `linux-state plan <id> --root R` prints deterministic actions
-  and summary; unknown snapshot fails with explicit ERROR.
-- Snapshot manifests now carry their own id.
+- Execution requires explicit approval; refusal changes nothing.
+- Transactions recorded under storage/transactions/<id>/transaction.json
+  (planned/executed/failed/status/rollback info).
+- Backup-before-replace: previous file content preserved in transaction
+  backup dir; symlink targets recorded for recreation.
+- NEW actions create files/dirs/symlinks with snapshot modes.
+- CONFLICT default policy = skip (nothing silently overwritten);
+  replace only with explicit --conflict replace.
+- SAME entries untouched (mtime preserved).
+- Snapshot content verified against manifest hash before applying, and
+  restored content verified after writing; mismatch aborts the run.
+- First failure stops the run; failure recorded; no partial success
+  reported as complete. Raw OSError converted to explicit ExecutionError.
+- Symlink escape protection: restore target resolving outside the root is
+  rejected before any write.
+- CLI: `linux-state restore <id> --approve [--conflict replace]`.
 
 Tests:
-- 123 passing
+- 134 passing
 - 0 failing
 
 Last validation:
@@ -54,21 +60,20 @@ Last validation:
 
 ## Current Work
 
-Task: none active — MVP-05 complete.
+Task: none active — MVP-06 complete.
 
-Next task: MVP-06 — Restore Executor + Backup Before Replace.
+Next task: MVP-07 — Verification Report + Rollback Command.
 
 Do not implement:
 - Automatic merge of configuration files.
-- Rollback command (MVP-07) — but the executor must record enough
-  transaction information for rollback to be built on top.
+- Interactive conflict prompts (explicit flags only for now).
 
 ## Next Step
 
-Implement `linux_state.executor`: execute an approved plan transactionally.
-Every replace is preceded by a backup of the existing file inside the
-transaction directory; failures stop the run and leave recoverable state.
-Requires explicit `--approve` (no silent destructive execution).
+Implement `linux_state.verification` (post-restore report: existence, hash,
+mode, symlink checks) and `linux_state.rollback` + `linux-state rollback
+[--transaction <id>]` using the transaction rollback info to restore the
+pre-restore state safely.
 
 ## Architectural Decisions
 
@@ -86,7 +91,7 @@ See `docs/adr/`:
 
 ## Tests Executed
 
-- 123 pytest tests (discovery, manifest, snapshot, storage, classification,
-  profiles, planner, integration, CLI) — all passing (2026-08-23).
-- End-to-end dry run: snapshot → mutate tree → plan reports
-  CONFLICT (modified), NEW (deleted), SAME (untouched).
+- 134 pytest tests (discovery, manifest, snapshot, storage, classification,
+  profiles, planner, executor, integration, CLI) — all passing (2026-08-23).
+- End-to-end: restore without --approve refused; with approval, NEW file
+  restored, SAME untouched, transaction recorded as completed.

@@ -235,6 +235,90 @@ def cmd_plan(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_restore(args: argparse.Namespace) -> int:
+    from linux_state.executor import ExecutionError, execute_plan
+    from linux_state.planner import build_plan
+    from linux_state.profiles import ResolvedProfile, Selector
+    from linux_state.storage import data_dir, load_manifest
+
+    root = Path(args.root).expanduser()
+    if not root.is_dir():
+        print(f"ERROR: not a directory: {root}", file=sys.stderr)
+        return 1
+
+    storage_root = Path(args.storage).expanduser() if args.storage else default_storage_root()
+
+    try:
+        manifest = load_manifest(storage_root, args.snapshot)
+        snapshot_data = data_dir(storage_root, args.snapshot)
+    except (FileNotFoundError, ValueError) as exc:
+        print(
+            f"ERROR\nOperation: restore\nPath: {storage_root / 'snapshots' / args.snapshot}\n"
+            f"Reason: {exc}\nAction: check the snapshot id with 'linux-state list'.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if args.profile:
+        try:
+            resolved = _resolve_profile(args.profile, args.profiles_dir)
+        except ProfileError as exc:
+            print(
+                f"ERROR\nOperation: profile resolution\nPath: {exc.source}\n"
+                f"Reason: {exc.reason}\nAction: fix the profile definition and retry.",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        resolved = ResolvedProfile(name="__all__", selectors=tuple(
+            Selector("category", category)
+            for category in ("personal", "identity", "shell", "development",
+                             "application", "desktop")
+        ))
+
+    try:
+        plan = build_plan(manifest, resolved, root)
+    except ValueError as exc:
+        print(
+            f"ERROR\nOperation: restore\nPath: {root}\n"
+            f"Reason: {exc}\nAction: pass --root matching the snapshot root.",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        tx = execute_plan(
+            plan,
+            root,
+            storage_root,
+            snapshot_data,
+            manifest,
+            approve=args.approve,
+            conflict_policy=args.conflict,
+        )
+    except ExecutionError as exc:
+        print(
+            f"ERROR\nOperation: {exc.operation}\nPath: {exc.path}\n"
+            f"Reason: {exc.reason}\nAction: review the plan and retry.",
+            file=sys.stderr,
+        )
+        return 2
+
+    home = Path.home()
+    for path in tx.executed:
+        try:
+            display = f"~/{Path(path).relative_to(home)}"
+        except ValueError:
+            display = path
+        print(f"RESTORED  {display}")
+    counts = plan.counts()
+    summary = ", ".join(f"{name}: {count}" for name, count in sorted(counts.items()))
+    print(f"\nTransaction: {tx.id} ({tx.status})")
+    print(f"Executed: {len(tx.executed)}  Failed: {len(tx.failed)}")
+    print(f"Plan summary -> {summary or 'no actions'}")
+    return 0 if tx.status == "completed" else 2
+
+
 def cmd_list(args: argparse.Namespace) -> int:
     storage_root = Path(args.storage).expanduser() if args.storage else default_storage_root()
     ids = list_snapshots(storage_root)
@@ -366,6 +450,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Storage root (default: $XDG_DATA_HOME/linux-state).",
     )
     plan_cmd.set_defaults(func=cmd_plan)
+
+    restore_cmd = sub.add_parser(
+        "restore",
+        help="Execute a restore plan from a snapshot (requires --approve).",
+    )
+    restore_cmd.add_argument("snapshot", metavar="SNAPSHOT_ID")
+    restore_cmd.add_argument("--root", default=str(Path.home()),
+                             help="Target directory; must match the snapshot root.")
+    restore_cmd.add_argument("--profile", metavar="NAME",
+                             help="Restrict the restore to a profile.")
+    restore_cmd.add_argument("--profiles-dir", metavar="DIR",
+                             help="Profiles directory override.")
+    restore_cmd.add_argument("--storage", metavar="PATH",
+                             help="Storage root (default: $XDG_DATA_HOME/linux-state).")
+    restore_cmd.add_argument(
+        "--conflict",
+        choices=("skip", "replace"),
+        default="skip",
+        help="Policy for conflicting files (default: skip).",
+    )
+    restore_cmd.add_argument(
+        "--approve",
+        action="store_true",
+        help="Explicitly approve execution. Without this flag nothing is modified.",
+    )
+    restore_cmd.set_defaults(func=cmd_restore)
 
     return parser
 
