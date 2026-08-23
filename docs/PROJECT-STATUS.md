@@ -8,8 +8,9 @@ snapshots and selectively restores user state safely
 
 ## Current Phase
 
-MVP-07 — Verification + Rollback (COMPLETE, validated)
-Next phase: MVP-08 — Documentation polish and publication review
+MVP COMPLETE (MVP-01 … MVP-08) — all components implemented and validated.
+Next phase: post-MVP backlog (deferred features per SPEC §36 require explicit
+user request).
 
 ## Implementation Status
 
@@ -17,35 +18,30 @@ Next phase: MVP-08 — Documentation polish and publication review
 | ------------ | ----------- |
 | Discovery    | Validated   |
 | Manifest     | Validated   |
-| CLI (scan)   | Validated   |
+| Classification | Validated |
+| Profiles     | Validated   |
 | Storage      | Validated   |
 | Snapshot     | Validated   |
-| CLI (snapshot, list) | Validated |
-| Classification | Validated   |
-| Profiles     | Validated   |
 | Restore plan | Validated   |
 | Restore      | Validated   |
 | Verification | Validated   |
 | Rollback     | Validated   |
+| CLI          | Validated   |
 
 ## Last Known Good State
 
 Milestone:
-MVP-07 - Verification and Rollback
+MVP-08 - Documentation and publication review (MVP complete)
 
 Validated:
-- Post-restore verification: existence, SHA-256, mode and symlink target
-  checks against the manifest; report stored inside the transaction record.
-- Restore is not reported complete until verification passes.
-- Rollback restores pre-restore state from transaction backups: conflict
-  files reverted to pre-restore content; created files removed; symlinks
-  recreated from recorded targets; SAME files untouched.
-- Rollback requires explicit approval; refusal changes nothing.
-- Rollback writes its own completed transaction record.
-- Unknown transactions fail explicitly.
-- Transactions now record the restore root.
-- CLI end-to-end validated: snapshot → mutate → restore --approve
-  (Verification PASS) → rollback --approve (prior state recovered).
+- Full canonical workflow end-to-end: scan → snapshot → plan (dry run) →
+  restore --approve → verification PASS → rollback --approve.
+- Clean-install validation: `pip install .` into a fresh venv; `linux-state`
+  runs with bundled rules resolved from package data.
+- README documents only implemented commands and flags.
+- CHANGELOG records the 0.1.0 MVP release.
+- Publication review (AGENTS §46.19): no secrets, no personal paths, no
+  temporary files, LICENSE present, status accurate.
 
 Tests:
 - 146 passing
@@ -56,18 +52,20 @@ Last validation:
 
 ## Current Work
 
-Task: none active — MVP-07 complete.
+Task: none active — MVP complete.
 
-Next task: MVP-08 — Documentation polish and publication review.
+Next task: user decision on post-MVP direction.
 
-Do not implement:
-- Automatic merge of configuration files.
-- Interactive conflict prompts (explicit flags only for now).
+Do not implement without an explicit request:
+- GUI, cloud storage, incremental snapshots/dedup/compression/encryption,
+  automatic package installation, config merging, interactive prompts,
+  ACL/xattr preservation, distribution migration.
 
 ## Next Step
 
-Final polish: accurate README usage documentation (real commands only),
-CHANGELOG entry for the MVP, publication review per AGENTS §46.19.
+Await project owner's choice of next milestone. Candidate directions from
+SPEC deferred list: compression (zstd), retention policy, or additional
+classification rules/profiles for real-world environments.
 
 ## Architectural Decisions
 
