@@ -80,6 +80,10 @@ def compress(source: Path, destination: Path, algorithm: str) -> None:
     try:
         with source.open("rb") as src, _open_write(destination, algorithm) as dst:
             shutil.copyfileobj(src, dst, CHUNK_SIZE)
+    except FileNotFoundError:
+        # Source vanished between discovery and capture (live tree).
+        # Propagate so the snapshot layer can apply skip policy.
+        raise
     except OSError as exc:
         raise CompressionError(algorithm, exc.strerror or str(exc)) from exc
 

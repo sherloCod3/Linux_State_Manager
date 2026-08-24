@@ -142,6 +142,7 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
         print(f"ERROR: rules directory not found: {args.rules}", file=sys.stderr)
         return 1
     ruleset, xdg = classifier_pair
+    skipped: list[Path] = []
 
     try:
         snapshot_id = create_snapshot(
@@ -151,6 +152,7 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
             classifier=ruleset,
             xdg=xdg,
             compression=args.compression,
+            skipped=skipped,
         )
     except DiscoveryError as exc:
         print(
@@ -169,6 +171,10 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
 
     print(f"Snapshot created: {snapshot_id}")
     print(f"Storage: {storage_root / 'snapshots' / snapshot_id}")
+    for path in skipped:
+        print(f"WARN: vanished during capture, skipped: {path}")
+    if skipped:
+        print(f"Skipped {len(skipped)} file(s) that disappeared during capture.")
 
     if args.keep is not None:
         from linux_state.storage import prune_snapshots

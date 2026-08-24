@@ -190,6 +190,60 @@ class TestCreateSnapshot:
             verify_snapshot(storage, sid)
 
 
+class TestVanishedDuringCapture:
+    """Files deleted by the running system between discovery and capture."""
+
+    @staticmethod
+    def _delete_on_compress(victim: Path, monkeypatch):
+        """Make codec.compress delete one specific source before reading it."""
+        from linux_state import compression as codec
+
+        original = codec.compress
+        target = victim.resolve()
+
+        def vanishing(source, destination, algorithm):
+            if source.resolve() == target:
+                source.unlink()
+            return original(source, destination, algorithm)
+
+        monkeypatch.setattr(codec, "compress", vanishing)
+
+    def test_snapshot_succeeds_and_reports_skip(self, rich_tree, storage, monkeypatch):
+        victim = rich_tree / "Documents" / "notes.txt"
+        self._delete_on_compress(victim, monkeypatch)
+        skipped: list[Path] = []
+        sid = create_snapshot(rich_tree, storage, skipped=skipped)
+        assert skipped == [victim.resolve()]
+        # Snapshot is published despite the vanished file.
+        assert list_snapshots(storage) == [sid]
+
+    def test_manifest_excludes_vanished_file(self, rich_tree, storage, monkeypatch):
+        victim = rich_tree / "Documents" / "notes.txt"
+        self._delete_on_compress(victim, monkeypatch)
+        sid = create_snapshot(rich_tree, storage)
+        manifest = json.loads(manifest_file(storage, sid).read_text())
+        paths = [record["path"] for record in manifest["files"]]
+        assert str(victim.resolve()) not in paths
+        assert str((rich_tree / ".bashrc").resolve()) in paths
+
+    def test_unreadable_file_still_fails_atomically(self, rich_tree, storage, monkeypatch):
+        """Only ENOENT is tolerated; permission errors keep aborting."""
+        from linux_state import compression as codec
+
+        original = codec.compress
+
+        def refusing(source, destination, algorithm):
+            if source.name == "init.lua":
+                raise PermissionError(13, "Permission denied")
+            return original(source, destination, algorithm)
+
+        monkeypatch.setattr(codec, "compress", refusing)
+        with pytest.raises(SnapshotError) as excinfo:
+            create_snapshot(rich_tree, storage)
+        assert excinfo.value.operation == "copy"
+        assert list_snapshots(storage) == []
+
+
 class TestMultipleSnapshots:
     def test_two_snapshots_coexist(self, rich_tree, storage):
         first = create_snapshot(rich_tree, storage)

@@ -105,11 +105,14 @@ def _materialize(
     root: Path,
     destination_root: Path,
     compression: str = "none",
-) -> None:
+) -> bool:
     """Store one entry into data/, preserving structure.
 
     Regular files are stored compressed per *compression*; the manifest
     keeps referring to logical (uncompressed) paths.
+
+    Returns False when a regular file vanished between discovery and
+    capture (live tree); the caller records the skip. Other errors raise.
     """
     from linux_state import compression as codec
 
@@ -126,6 +129,8 @@ def _materialize(
         destination.parent.mkdir(parents=True, exist_ok=True)
         try:
             codec.compress(entry.path, destination, compression)
+        except FileNotFoundError:
+            return False
         except OSError as exc:
             raise SnapshotError(
                 "copy", entry.path, exc.strerror or str(exc)
@@ -141,6 +146,7 @@ def _materialize(
     else:
         # Special files are recorded in the manifest but not copied.
         pass
+    return True
 
 
 def create_snapshot(
@@ -151,11 +157,16 @@ def create_snapshot(
     classifier=None,
     xdg=None,
     compression: str = "gzip",
+    skipped: list[Path] | None = None,
 ) -> str:
     """Create a full snapshot of *root* inside *storage_root*.
 
     Returns the new snapshot id. Raises SnapshotError on failure without
     leaving a partial snapshot behind.
+
+    Regular files deleted by the running system between discovery and
+    capture are reported via *skipped* (when given) instead of aborting;
+    they are excluded from the manifest so it only describes stored data.
     """
     from linux_state import compression as codec
 
@@ -178,6 +189,24 @@ def create_snapshot(
     try:
         (staging_dir / "data").mkdir(parents=True)
 
+        metadata = collect_metadata(root)
+        metadata["compression"] = compression
+        (staging_dir / "metadata.json").write_text(
+            serialize_manifest(metadata), encoding="utf-8"
+        )
+
+        vanished: list[Path] = []
+        for entry in entries:
+            if not _materialize(entry, root, staging_dir / "data", compression):
+                vanished.append(entry.path)
+        if vanished:
+            if skipped is not None:
+                skipped.extend(vanished)
+            dropped = set(vanished)
+            entries = [e for e in entries if e.path not in dropped]
+
+        # Written after capture so the manifest describes only data that
+        # is actually present in the snapshot.
         manifest = build_manifest(
             root,
             entries,
@@ -186,17 +215,9 @@ def create_snapshot(
             xdg=xdg,
             snapshot_metadata={"id": snapshot_id},
         )
-        metadata = collect_metadata(root)
-        metadata["compression"] = compression
         (staging_dir / "manifest.json").write_text(
             serialize_manifest(manifest), encoding="utf-8"
         )
-        (staging_dir / "metadata.json").write_text(
-            serialize_manifest(metadata), encoding="utf-8"
-        )
-
-        for entry in entries:
-            _materialize(entry, root, staging_dir / "data", compression)
 
         # Only publish complete snapshots.
         staging_dir.rename(final_dir)
