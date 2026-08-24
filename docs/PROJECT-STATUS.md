@@ -8,9 +8,8 @@ snapshots and selectively restores user state safely
 
 ## Current Phase
 
-MVP-09 — Compression + Retention (COMPLETE, validated)
-Next phase: post-MVP backlog (deferred features per SPEC §36 require explicit
-user request).
+MVP-10 — Amplitude-aware snapshot + streaming manifest (COMPLETE, validated)
+Previous: MVP-09 — Compression + Retention (validated 2026-08-23).
 
 ## Implementation Status
 
@@ -24,6 +23,8 @@ user request).
 | Snapshot     | Validated   |
 | Snapshot compression (gzip/zstd) | Validated |
 | Retention (--keep) | Validated |
+| Snapshot amplitude (--profile/--exclude) | Validated |
+| Snapshot streaming (single-pass hash, in-place sort) | Validated |
 | Restore plan | Validated   |
 | Restore      | Validated   |
 | Verification | Validated   |
@@ -33,34 +34,41 @@ user request).
 ## Last Known Good State
 
 Milestone:
-MVP-09 - Snapshot compression and opt-in retention
+MVP-10 - Amplitude-aware snapshot + streaming manifest
 
 Validated:
-- Snapshots store regular files individually compressed; gzip is the
-  default, zstd optional behind an explicit availability check (Python
-  3.14+ stdlib `compression.zstd`); requesting zstd where unavailable is
-  an explicit error, never a silent fallback.
-- Algorithm recorded in snapshot metadata; manifest paths stay logical;
-  pre-compression legacy snapshots remain restorable ('none' reader).
-- Executor decompresses on restore and still verifies hashes before and
-  after writing; modes applied from manifest after decompression.
-- verify_snapshot hashes decompressed content and detects tampering.
-- Retention: `--keep N` prunes oldest beyond newest N after creation,
-  reports removed IDs, never touches transactions/; without the flag
-  nothing is ever deleted.
-- End-to-end CLI validated: gzip roundtrip with mode preservation,
-  zstd snapshot creation + metadata, retention pruning to keep=2.
+- Vanished-file tolerance: files deleted between discovery and capture
+  are SKIPPED (WARN) and excluded from manifest; permission errors still
+  abort atomically; manifest written after capture so it only describes
+  stored data (`snapshot.py:103-224`).
+- Amplitude reduction: `snapshot --profile NAME` captures only entries
+  selected by the resolved profile (reuses `classification+profiles`
+  logic, so it matches `plan --profile`); `--exclude PATTERN` (repeatable,
+  fnmatch with `/**` dir semantics) applied afterwards; metadata records
+  `profile`/`exclude` for traceability.
+- Streaming manifest: `manifest.py:write_manifest_atomic` uses
+  `json.dump` streaming instead of `json.dumps` 400 MB string; snapshot
+  sorts entries in-place and passes `already_sorted=True` to
+  `build_manifest` to halve peak copies.
+- Single-pass I/O: `discovery` without pre-hash + `compression.compress_and_hash`
+  computes SHA-256 while compressing, halving reads for large trees
+  (`compression.py:96`, `snapshot.py:105`).
+- Compression/retention unchanged: gzip default, zstd opt-in with
+  availability check; `--keep N` prunes oldest beyond newest N.
+- End-to-end CLI validated: filtered snapshot (shell-only, exclude
+  `.cache/**`) roundtrip; gzip mode preserved; vanished-file capture.
 
 Tests:
-- 168 passing
+- 171 passing
 - 0 failing
 
 Last validation:
-2026-08-23
+2026-08-24
 
 ## Current Work
 
-Task: none active — MVP-09 (compression + retention) complete.
+Task: none active — MVP-10 complete. Awaiting owner decision on next
+milestone; avoid partition-shrink workaround (full-disk distros impasse).
 
 Do not implement without an explicit request:
 - GUI, cloud storage, incremental snapshots/dedup/encryption,
@@ -69,9 +77,13 @@ Do not implement without an explicit request:
 
 ## Next Step
 
-Await project owner's choice of next milestone. Remaining deferred
-candidates: incremental snapshots/deduplication, ACL/xattr support,
-declarative config file, additional classification rules/profiles.
+Choose between:
+- Incremental/dedup backend (pluggable `borg`/`restic` adapter per `storage.py`
+  isolation — avoids further reimplementing storage).
+- Additional classification rules/profiles (e.g. `desktop:sway`, `applications:*`).
+- Dedicated storage partition guidance (`examples/` + `README` already warns
+  full-disk installs impede personal-data separation; prefer
+  `snapshot --profile/--exclude` over shrinking partitions).
 
 ## Architectural Decisions
 
@@ -94,7 +106,9 @@ See `docs/adr/`:
 
 ## Tests Executed
 
-- 168 pytest tests — all passing (2026-08-23).
+- 171 pytest tests — all passing (2026-08-24).
 - End-to-end CLI: gzip snapshot → mutate → restore (Verification PASS,
-  mode 0600 preserved); --keep 2 pruned 4 snapshots down to 2; zstd
-  snapshot created and verified on Python 3.14.
+  mode 0600 preserved); --keep 2 pruned 4 snapshots down to 2; filtered
+  snapshot (`--profile shell`, `--exclude .cache/**`) verified and
+  restorable; vanished-file skip path covered; zstd creation verified on
+  Python 3.14.

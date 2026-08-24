@@ -15,13 +15,14 @@ Discover → Classify → Snapshot → Plan → Preview → Approve → Apply �
 
 ## Status
 
-MVP feature-complete. All core commands are implemented **and validated**
-by the test suite (146 tests). See
+MVP-10 complete. All core commands are implemented **and validated**
+by the test suite (171 tests). See
 [docs/PROJECT-STATUS.md](docs/PROJECT-STATUS.md) for details.
 
-Implemented: discovery, classification, manifests, snapshots, profiles,
-restore planning, dry run, conflict detection, transactional restore,
-verification, rollback, CLI.
+Implemented: discovery, classification, manifests, snapshots (streaming
+manifest + single-pass hash, amplitude reduction via `--profile/--exclude`),
+profiles, restore planning, dry run, conflict detection, transactional
+restore, verification, rollback, CLI.
 
 Not implemented: GUI, cloud storage, package installation, config merging,
 ACL/xattr preservation (see [Known limitations](#known-limitations)).
@@ -50,6 +51,10 @@ linux-state scan --root ~ -v
 # Data is gzip-compressed by default; --compression zstd requires Python 3.14+.
 linux-state snapshot --root ~
 
+# Reduced amplitude without repartitioning (configs-only, skip caches):
+linux-state snapshot --root ~ --profile shell --exclude ".cache/**"
+linux-state snapshot --root ~ --profile development --exclude "Downloads/**"
+
 # Opt-in retention: after snapshotting, prune all but the newest 10 snapshots.
 linux-state snapshot --root ~ --keep 10
 ```
@@ -58,6 +63,12 @@ Snapshots preserve file modes and symlinks (including broken ones) and store
 a manifest with SHA-256 hashes plus environment metadata. File data is stored
 compressed per file (`gzip` or `zstd`); the algorithm used is recorded in each
 snapshot's metadata, and pre-compression legacy snapshots remain restorable.
+`--profile` reuses the same classification as `plan --profile`, so a
+`snapshot --profile shell` contains exactly what a restore with that profile
+would consider; `--exclude` is repeatable fnmatch (`**` supported) relative
+to `--root`. Live files that vanish between discovery and capture are SKIPPED
+with a warning and excluded from the manifest; permission errors still abort
+atomically.
 
 ### Browse stored snapshots
 
@@ -135,7 +146,7 @@ never restored.
 ## Development
 
 ```bash
-python3 -m pytest        # 146 tests; all use isolated temp directories
+python3 -m pytest        # 171 tests; all use isolated temp directories
 ```
 
 The test suite never touches a real user home directory.
