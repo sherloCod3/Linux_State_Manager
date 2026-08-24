@@ -143,6 +143,17 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
         return 1
     ruleset, xdg = classifier_pair
     skipped: list[Path] = []
+    resolved_profile = None
+    if args.profile:
+        try:
+            resolved_profile = _resolve_profile(args.profile, args.profiles_dir)
+        except ProfileError as exc:
+            print(
+                f"ERROR\nOperation: profile resolution\nPath: {exc.source}\n"
+                f"Reason: {exc.reason}\nAction: fix the profile definition and retry.",
+                file=sys.stderr,
+            )
+            return 2
 
     try:
         snapshot_id = create_snapshot(
@@ -153,6 +164,8 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
             xdg=xdg,
             compression=args.compression,
             skipped=skipped,
+            profile=resolved_profile,
+            exclude=args.exclude,
         )
     except DiscoveryError as exc:
         print(
@@ -486,6 +499,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--rules",
         metavar="DIR",
         help="User rules directory; takes precedence over bundled defaults.",
+    )
+    snapshot.add_argument(
+        "--profile",
+        metavar="NAME",
+        help="Only snapshot entries selected by this profile (e.g. shell, desktop:hyprland). "
+             "When omitted the whole tree is captured.",
+    )
+    snapshot.add_argument(
+        "--profiles-dir",
+        metavar="DIR",
+        help="Profiles directory (default: $XDG_CONFIG_HOME/linux-state/profiles).",
+    )
+    snapshot.add_argument(
+        "--exclude",
+        metavar="PATTERN",
+        action="append",
+        default=None,
+        help="Exclude paths matching PATTERN (fnmatch, relative to --root). "
+             "Repeatable. Example: --exclude '.cache/**' --exclude 'Downloads/**'.",
     )
     snapshot.set_defaults(func=cmd_snapshot)
 

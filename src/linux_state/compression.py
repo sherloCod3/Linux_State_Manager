@@ -88,6 +88,28 @@ def compress(source: Path, destination: Path, algorithm: str) -> None:
         raise CompressionError(algorithm, exc.strerror or str(exc)) from exc
 
 
+def compress_and_hash(source: Path, destination: Path, algorithm: str) -> str:
+    """Compress *source* into *destination* while computing SHA-256.
+
+    Single read instead of hash-then-compress double I/O. Returns the
+    hex digest of the logical (uncompressed) content.
+    """
+    import hashlib
+
+    digest = hashlib.sha256()
+    require_available(algorithm)
+    try:
+        with source.open("rb") as src, _open_write(destination, algorithm) as dst:
+            while chunk := src.read(CHUNK_SIZE):
+                digest.update(chunk)
+                dst.write(chunk)
+    except FileNotFoundError:
+        raise
+    except OSError as exc:
+        raise CompressionError(algorithm, exc.strerror or str(exc)) from exc
+    return digest.hexdigest()
+
+
 def decompress(source: Path, destination: Path, algorithm: str) -> None:
     """Decompress *source* into *destination* (streaming)."""
     require_available(algorithm)

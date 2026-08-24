@@ -28,6 +28,8 @@ from linux_state.compression import CompressionError
 from linux_state.discovery import Entry, Kind
 from linux_state.manifest import build_manifest, serialize_manifest
 
+import fnmatch
+
 METADATA_VERSION = 1
 
 
@@ -105,15 +107,23 @@ def _materialize(
     root: Path,
     destination_root: Path,
     compression: str = "none",
-) -> bool:
+    compute_hash: bool = True,
+) -> tuple[bool, Entry | None]:
     """Store one entry into data/, preserving structure.
 
     Regular files are stored compressed per *compression*; the manifest
     keeps referring to logical (uncompressed) paths.
 
-    Returns False when a regular file vanished between discovery and
+    Returns (False, None) when a regular file vanished between discovery and
     capture (live tree); the caller records the skip. Other errors raise.
+    When *compute_hash* is True a single read computes the SHA-256 while
+    compressing, avoiding the pre-compression double-read.
+
+    On success returns (True, entry) where entry may be a new Entry with
+    an updated ``sha256`` when hashing was requested.
     """
+    from dataclasses import replace
+
     from linux_state import compression as codec
 
     relative = entry.path.relative_to(root)
@@ -125,16 +135,23 @@ def _materialize(
     if entry.kind == Kind.DIRECTORY:
         destination.mkdir(parents=True, exist_ok=True)
         os.chmod(destination, int(entry.mode, 8))
+        return True, entry
     elif entry.kind == Kind.FILE:
         destination.parent.mkdir(parents=True, exist_ok=True)
         try:
-            codec.compress(entry.path, destination, compression)
+            if compute_hash:
+                digest = codec.compress_and_hash(entry.path, destination, compression)
+                # Entry is frozen; create updated copy with hash.
+                entry = replace(entry, sha256=digest)
+            else:
+                codec.compress(entry.path, destination, compression)
         except FileNotFoundError:
-            return False
+            return False, None
         except OSError as exc:
             raise SnapshotError(
                 "copy", entry.path, exc.strerror or str(exc)
             ) from exc
+        return True, entry
     elif entry.kind == Kind.SYMLINK:
         destination.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -143,10 +160,75 @@ def _materialize(
             raise SnapshotError(
                 "symlink", entry.path, exc.strerror or str(exc)
             ) from exc
+        return True, entry
     else:
         # Special files are recorded in the manifest but not copied.
-        pass
-    return True
+        return True, entry
+
+
+def _filter_entries(
+    entries: list[Entry],
+    root: Path,
+    classifier,
+    xdg,
+    profile,
+    exclude: list[str] | None,
+) -> list[Entry]:
+    """Apply profile selection and exclude globs to discovery entries.
+
+    Profile filtering reuses the same Classifier + ProfileResolver logic as
+    `plan`, so `snapshot --profile X` captures exactly what `plan --profile X`
+    would consider. Exclude globs are applied after profile selection and
+    match relative POSIX paths (fnmatch, `*` and `**`).
+    """
+    filtered = entries
+    if profile is not None:
+        if classifier is None:
+            from linux_state.classification import XdgDirs, default_rule_files, load_ruleset
+
+            classifier = load_ruleset(default_rule_files())
+            if xdg is None:
+                xdg = XdgDirs()
+        from linux_state.profiles import select_entries
+
+        # Build (relative, Classification) tuples for the selector.
+        classified = []
+        for entry in filtered:
+            rel = entry.relative_to(root)
+            result = classifier.classify(rel, xdg, root)
+            classified.append((rel, result))
+        selected = {path for path, _ in select_entries(classified, profile)}
+        filtered = [e for e in filtered if e.relative_to(root) in selected]
+    if exclude:
+        normalized = []
+        for pat in exclude:
+            p = pat.strip()
+            if p.startswith("~/"):
+                p = p[2:]
+            p = p.lstrip("/")
+            if p:
+                normalized.append(p)
+        if normalized:
+            kept: list[Entry] = []
+            for entry in filtered:
+                rel = entry.relative_to(root)
+                # fnmatch alone does not make '**' semantics intuitive
+                # (e.g. 'Documents' should be excluded by 'Documents/**').
+                excluded = False
+                for pat in normalized:
+                    if pat.endswith("/**"):
+                        base = pat[:-3]
+                        if rel == base or rel.startswith(base + "/"):
+                            excluded = True
+                            break
+                    if fnmatch.fnmatch(rel, pat):
+                        excluded = True
+                        break
+                if excluded:
+                    continue
+                kept.append(entry)
+            filtered = kept
+    return filtered
 
 
 def create_snapshot(
@@ -158,8 +240,15 @@ def create_snapshot(
     xdg=None,
     compression: str = "gzip",
     skipped: list[Path] | None = None,
+    profile=None,
+    exclude: list[str] | None = None,
 ) -> str:
-    """Create a full snapshot of *root* inside *storage_root*.
+    """Create a snapshot of *root* inside *storage_root*.
+
+    By default a full snapshot is created. When *profile* is given only
+    entries selected by that profile are captured; *exclude* globs are
+    applied afterwards. This allows reduced-amplitude snapshots
+    (e.g. configs-only) without shrinking partitions.
 
     Returns the new snapshot id. Raises SnapshotError on failure without
     leaving a partial snapshot behind.
@@ -176,9 +265,15 @@ def create_snapshot(
         raise SnapshotError("snapshot", root, "not a directory")
 
     try:
-        entries = list(discovery_mod.discover(root, hash_files=hash_files))
+        # Discover without hashing; hash is computed in a single pass while
+        # compressing (snapshot.py: _materialize with compress_and_hash) to
+        # avoid double-reading every file. This halves I/O for large trees.
+        entries = list(discovery_mod.discover(root, hash_files=False))
     except discovery_mod.DiscoveryError as exc:
         raise SnapshotError(exc.operation, exc.path, exc.reason) from exc
+    # Profile / exclude filtering (amplitude reduction) before materialization.
+    if profile is not None or exclude:
+        entries = _filter_entries(entries, root, classifier, xdg, profile, exclude)
     snapshot_id = new_snapshot_id()
 
     final_dir = storage_root / "snapshots" / snapshot_id
@@ -191,20 +286,33 @@ def create_snapshot(
 
         metadata = collect_metadata(root)
         metadata["compression"] = compression
-        (staging_dir / "metadata.json").write_text(
-            serialize_manifest(metadata), encoding="utf-8"
-        )
+        if profile is not None:
+            metadata["profile"] = getattr(profile, "name", str(profile))
+        if exclude:
+            metadata["exclude"] = list(exclude)
+        # Streaming JSON dump avoids the 400 MB intermediate string that
+        # OOM-kills large snapshots (750k entries).
+        from linux_state.manifest import write_manifest_atomic
+
+        write_manifest_atomic(metadata, staging_dir / "metadata.json")
 
         vanished: list[Path] = []
+        captured: list[Entry] = []
         for entry in entries:
-            if not _materialize(entry, root, staging_dir / "data", compression):
+            ok, updated = _materialize(
+                entry, root, staging_dir / "data", compression, compute_hash=hash_files
+            )
+            if not ok:
                 vanished.append(entry.path)
-        if vanished:
-            if skipped is not None:
-                skipped.extend(vanished)
-            dropped = set(vanished)
-            entries = [e for e in entries if e.path not in dropped]
+            else:
+                captured.append(updated if updated is not None else entry)
+        entries = captured
+        if vanished and skipped is not None:
+            skipped.extend(vanished)
 
+        # Sort once in-place and avoid the duplicate sorted() copy inside
+        # build_manifest. This halves peak memory for the entry list.
+        entries.sort(key=lambda e: e.relative_to(root))
         # Written after capture so the manifest describes only data that
         # is actually present in the snapshot.
         manifest = build_manifest(
@@ -214,10 +322,9 @@ def create_snapshot(
             classifier=classifier,
             xdg=xdg,
             snapshot_metadata={"id": snapshot_id},
+            already_sorted=True,
         )
-        (staging_dir / "manifest.json").write_text(
-            serialize_manifest(manifest), encoding="utf-8"
-        )
+        write_manifest_atomic(manifest, staging_dir / "manifest.json")
 
         # Only publish complete snapshots.
         staging_dir.rename(final_dir)

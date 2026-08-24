@@ -199,6 +199,7 @@ class TestVanishedDuringCapture:
         from linux_state import compression as codec
 
         original = codec.compress
+        original_hash = codec.compress_and_hash
         target = victim.resolve()
 
         def vanishing(source, destination, algorithm):
@@ -206,7 +207,13 @@ class TestVanishedDuringCapture:
                 source.unlink()
             return original(source, destination, algorithm)
 
+        def vanishing_hash(source, destination, algorithm):
+            if source.resolve() == target:
+                source.unlink()
+            return original_hash(source, destination, algorithm)
+
         monkeypatch.setattr(codec, "compress", vanishing)
+        monkeypatch.setattr(codec, "compress_and_hash", vanishing_hash)
 
     def test_snapshot_succeeds_and_reports_skip(self, rich_tree, storage, monkeypatch):
         victim = rich_tree / "Documents" / "notes.txt"
@@ -231,13 +238,20 @@ class TestVanishedDuringCapture:
         from linux_state import compression as codec
 
         original = codec.compress
+        original_hash = codec.compress_and_hash
 
         def refusing(source, destination, algorithm):
             if source.name == "init.lua":
                 raise PermissionError(13, "Permission denied")
             return original(source, destination, algorithm)
 
+        def refusing_hash(source, destination, algorithm):
+            if source.name == "init.lua":
+                raise PermissionError(13, "Permission denied")
+            return original_hash(source, destination, algorithm)
+
         monkeypatch.setattr(codec, "compress", refusing)
+        monkeypatch.setattr(codec, "compress_and_hash", refusing_hash)
         with pytest.raises(SnapshotError) as excinfo:
             create_snapshot(rich_tree, storage)
         assert excinfo.value.operation == "copy"

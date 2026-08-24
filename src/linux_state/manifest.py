@@ -28,6 +28,7 @@ def build_manifest(
     include_hashes: bool = True,
     classifier: "RuleSet | None" = None,
     xdg: "XdgDirs | None" = None,
+    already_sorted: bool = False,
 ) -> dict:
     """Build a manifest dict from discovery entries.
 
@@ -36,7 +37,8 @@ def build_manifest(
     """
     root = root.resolve()
     files = []
-    for entry in sorted(entries, key=lambda e: e.relative_to(root)):
+    iterable = entries if already_sorted else sorted(entries, key=lambda e: e.relative_to(root))
+    for entry in iterable:
         record = {
             "path": entry.path.as_posix(),
             "type": entry.kind.value,
@@ -85,8 +87,22 @@ def write_manifest(manifest: dict, output: Path) -> None:
     """Write the manifest to *output* (the only write this module performs)."""
     output.parent.mkdir(parents=True, exist_ok=True)
     tmp = output.with_suffix(output.suffix + ".tmp")
-    tmp.write_text(serialize_manifest(manifest), encoding="utf-8")
+    write_manifest_atomic(manifest, tmp)
     tmp.replace(output)
+
+
+def write_manifest_atomic(manifest: dict, output: Path) -> None:
+    """Atomically write *manifest* without building a 400 MB intermediate string.
+
+    Uses streaming `json.dump` to avoid the `json.dumps` contiguous allocation
+    that OOM-kills large snapshots (750k entries ≈ 400 MB string + 900 MB entries
+    + 480 MB file dicts).
+    """
+    output.parent.mkdir(parents=True, exist_ok=True)
+    # json.dump streams to the file object; no intermediate huge string.
+    with output.open("w", encoding="utf-8") as fh:
+        json.dump(manifest, fh, indent=2, sort_keys=True)
+        fh.write("\n")
 
 
 def entry_to_display(entry: Entry, home: Path) -> str:
