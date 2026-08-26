@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,7 @@ from linux_state.executor import NotApprovedError, execute_plan
 from linux_state.manifest import build_manifest
 from linux_state.planner import build_plan, CONFLICT, NEW
 from linux_state.profiles import ResolvedProfile, Selector
+from linux_state.rollback import perform_rollback
 
 ALL = ResolvedProfile(name="__all__", selectors=tuple(
     Selector("category", c) for c in ("personal", "identity", "shell", "development")
@@ -243,3 +245,162 @@ class TestPathSafety:
         assert result.status == "failed"
         # The outside directory was never written.
         assert list(outside.iterdir()) == []
+
+
+def build_tree_with_escaping_symlink(tmp_path: Path):
+    """Tree containing a virtualenv-style symlink to an absolute outside
+    path, snapshotted, then removed so restore must recreate it."""
+    outside_file = tmp_path / "outside" / "interpreter"
+    outside_file.parent.mkdir()
+    outside_file.write_text("fake interpreter\n")
+
+    tree = tmp_path / "tree"
+    project = tree / "Documents" / "project"
+    (project / ".venv" / "bin").mkdir(parents=True)
+    link = project / ".venv" / "bin" / "python"
+    os.symlink(outside_file, link)
+    (project / "main.py").write_text("print('hi')\n")
+
+    storage = tmp_path / "storage"
+    storage.mkdir()
+    ruleset = permissive_rules(tmp_path)
+    manifest = build_manifest(
+        tree, discover(tree), classifier=ruleset, xdg=None,
+        snapshot_metadata={"id": "2026-01-01T00-00-00Z-0a11"},
+    )
+    from linux_state.storage import data_dir as _dd
+
+    data = _dd(storage, "2026-01-01T00-00-00Z-0a11")
+    for entry in discover(tree):
+        rel = entry.path.relative_to(tree)
+        dest = data / rel
+        if entry.kind.value == "directory":
+            dest.mkdir(parents=True)
+        elif entry.kind.value == "symlink":
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            os.symlink(entry.symlink_target, dest)
+        else:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(entry.path, dest)
+
+    shutil.rmtree(tree / "Documents" / "project")
+    plan = build_plan(manifest, ALL, tree)
+    return {
+        "tree": tree, "storage": storage, "manifest": manifest,
+        "data": data, "plan": plan, "link": link,
+        "outside_file": outside_file,
+    }
+
+
+class TestLeafSymlinkEscape:
+    def test_restore_creates_out_of_root_symlink(self, tmp_path):
+        s = build_tree_with_escaping_symlink(tmp_path)
+        result = execute_plan(
+            s["plan"], s["tree"], s["storage"],
+            s["data"], s["manifest"], approve=True,
+        )
+        assert result.status == "completed"
+        assert s["link"].is_symlink()
+        assert os.readlink(s["link"]) == str(s["outside_file"])
+
+    def test_rollback_removes_out_of_root_symlink(self, tmp_path):
+        s = build_tree_with_escaping_symlink(tmp_path)
+        result = execute_plan(
+            s["plan"], s["tree"], s["storage"],
+            s["data"], s["manifest"], approve=True,
+        )
+        assert result.status == "completed"
+        _original, rb_tx = perform_rollback(s["storage"], result.id, approve=True)
+        assert rb_tx.status == "completed"
+        assert not os.path.lexists(s["link"])
+        # The symlink target was never touched.
+        assert s["outside_file"].read_text() == "fake interpreter\n"
+
+    def test_file_restore_never_writes_through_leaf_symlink(self, tmp_path):
+        canary = tmp_path / "outside" / "canary.txt"
+        canary.parent.mkdir()
+        canary.write_text("do not touch\n")
+
+        tree = tmp_path / "tree"
+        (tree / "Documents").mkdir(parents=True)
+        config = tree / "Documents" / "app.conf"
+        config.write_text("original\n")
+
+        storage = tmp_path / "storage"
+        storage.mkdir()
+        ruleset = permissive_rules(tmp_path)
+        manifest = build_manifest(
+            tree, discover(tree), classifier=ruleset, xdg=None,
+            snapshot_metadata={"id": "2026-01-01T00-00-00Z-1eaf"},
+        )
+        from linux_state.storage import data_dir as _dd
+
+        data = _dd(storage, "2026-01-01T00-00-00Z-1eaf")
+        for entry in discover(tree):
+            rel = entry.path.relative_to(tree)
+            dest = data / rel
+            if entry.kind.value == "directory":
+                dest.mkdir(parents=True)
+            else:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(entry.path, dest)
+
+        # Mutate: replace the regular file with an escaping symlink.
+        config.unlink()
+        os.symlink(canary, config)
+
+        plan = build_plan(manifest, ALL, tree)
+        result = execute_plan(
+            plan, tree, storage, data, manifest,
+            approve=True, conflict_policy="replace",
+        )
+        assert result.status == "completed"
+        # Restored as a regular file, not through the symlink.
+        assert not config.is_symlink()
+        assert config.read_text() == "original\n"
+        assert canary.read_text() == "do not touch\n"
+
+    def test_rollback_restores_leaf_symlink_after_replace(self, tmp_path):
+        canary = tmp_path / "outside" / "canary.txt"
+        canary.parent.mkdir()
+        canary.write_text("do not touch\n")
+
+        tree = tmp_path / "tree"
+        (tree / "Documents").mkdir(parents=True)
+        config = tree / "Documents" / "app.conf"
+        config.write_text("original\n")
+
+        storage = tmp_path / "storage"
+        storage.mkdir()
+        ruleset = permissive_rules(tmp_path)
+        manifest = build_manifest(
+            tree, discover(tree), classifier=ruleset, xdg=None,
+            snapshot_metadata={"id": "2026-01-01T00-00-00Z-b00c"},
+        )
+        from linux_state.storage import data_dir as _dd
+
+        data = _dd(storage, "2026-01-01T00-00-00Z-b00c")
+        for entry in discover(tree):
+            rel = entry.path.relative_to(tree)
+            dest = data / rel
+            if entry.kind.value == "directory":
+                dest.mkdir(parents=True)
+            else:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(entry.path, dest)
+
+        config.unlink()
+        os.symlink(canary, config)
+
+        plan = build_plan(manifest, ALL, tree)
+        result = execute_plan(
+            plan, tree, storage, data, manifest,
+            approve=True, conflict_policy="replace",
+        )
+        assert result.status == "completed"
+        _original, rb_tx = perform_rollback(storage, result.id, approve=True)
+        assert rb_tx.status == "completed"
+        # Pre-restore state (the escaping symlink) is back.
+        assert config.is_symlink()
+        assert os.readlink(config) == str(canary)
+        assert canary.read_text() == "do not touch\n"

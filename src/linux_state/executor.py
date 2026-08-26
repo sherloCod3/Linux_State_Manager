@@ -133,14 +133,30 @@ def new_transaction(
 
 
 def _ensure_within_root(target: Path, root: Path) -> None:
-    """Reject paths that escape the root via traversal or parent symlinks."""
-    resolved_target = target.resolve()
-    resolved_root = root.resolve()
+    """Reject paths that escape the root via traversal or parent symlinks.
+
+    Only the *parent chain* is resolved through the filesystem: a target
+    whose directory components are symlinks pointing outside the root is
+    rejected. The final component is deliberately never followed, so a
+    leaf that is itself a symlink to an outside location (e.g. a restored
+    virtualenv's ``bin/python -> /usr/bin/python3``) stays manageable —
+    rollback must be able to unlink it.
+    """
     try:
-        resolved_target.relative_to(resolved_root)
+        target.relative_to(root)
     except ValueError:
         raise ExecutionError(
-            "restore", target, "path escapes the restore root (symlink escape?)"
+            "restore", target, "path escapes the restore root (traversal)"
+        ) from None
+
+    resolved_root = root.resolve()
+    resolved_parent = target.parent.resolve()
+    try:
+        resolved_parent.relative_to(resolved_root)
+    except ValueError:
+        raise ExecutionError(
+            "restore", target,
+            "path escapes the restore root (parent symlink?)"
         ) from None
 
 
@@ -288,6 +304,11 @@ def _apply_action(
                 "stored snapshot content does not match manifest hash",
             )
         target.parent.mkdir(parents=True, exist_ok=True)
+        # Never write through a pre-existing leaf symlink: the backup step
+        # already recorded it, so unlinking here keeps the replacement
+        # local to the restore root.
+        if os.path.islink(target):
+            target.unlink()
         codec.decompress(source, target, algorithm)
         os.chmod(target, int(record["mode"], 8))
         applied_hash = _hash_of(target)
