@@ -243,3 +243,119 @@ class TestCliPlan:
         ])
         assert rc == 1
         assert "ERROR" in capsys.readouterr().err
+
+
+class TestExcludes:
+    def _tree(self, tmp_path: Path) -> Path:
+        tree = tmp_path / "tree"
+        tree.mkdir()
+        (tree / ".bashrc").write_text("hi\n")
+        (tree / "Documents" / "notes.txt").parent.mkdir(parents=True)
+        (tree / "Documents" / "notes.txt").write_text("data\n")
+        (tree / "Documents" / "keep.txt").write_text("keep\n")
+        return tree
+
+    def test_exclude_single_file(self, tmp_path):
+        tree = self._tree(tmp_path)
+        manifest = manifest_for(tree, permissive_rules(tmp_path), None)
+        plan = build_plan(manifest, ALL, tree, exclude=[".bashrc"])
+        by_path = actions_by_path(plan)
+        assert by_path[".bashrc"].action == SKIPPED
+        assert by_path[".bashrc"].reason == "user exclude"
+        assert by_path["Documents/notes.txt"].action == SAME
+
+    def test_exclude_dir_glob_covers_dir_and_children(self, tmp_path):
+        tree = self._tree(tmp_path)
+        manifest = manifest_for(tree, permissive_rules(tmp_path), None)
+        plan = build_plan(manifest, ALL, tree, exclude=["Documents/**"])
+        by_path = actions_by_path(plan)
+        assert by_path["Documents"].action == SKIPPED
+        assert by_path["Documents/notes.txt"].action == SKIPPED
+        assert by_path["Documents/keep.txt"].action == SKIPPED
+        assert by_path[".bashrc"].action == SAME
+
+    def test_exclude_fnmatch_pattern(self, tmp_path):
+        tree = self._tree(tmp_path)
+        manifest = manifest_for(tree, permissive_rules(tmp_path), None)
+        plan = build_plan(manifest, ALL, tree, exclude=["Documents/*.txt"])
+        by_path = actions_by_path(plan)
+        assert by_path["Documents/notes.txt"].action == SKIPPED
+        assert by_path["Documents/keep.txt"].action == SKIPPED
+        # Only files match; the directory itself is kept.
+        assert by_path["Documents"].action == SAME
+
+    def test_excluded_entries_never_restored_by_executor(self, tmp_path):
+        import os as _os
+        import shutil as _shutil
+
+        from linux_state.executor import execute_plan
+        from linux_state.storage import data_dir
+
+        tree = self._tree(tmp_path)
+        storage = tmp_path / "storage"
+        storage.mkdir()
+        ruleset = permissive_rules(tmp_path)
+        manifest = build_manifest(
+            tree, discover(tree), classifier=ruleset, xdg=None,
+            snapshot_metadata={"id": "2026-01-01T00-00-00Z-e101"},
+        )
+        data = data_dir(storage, "2026-01-01T00-00-00Z-e101")
+        for entry in discover(tree):
+            rel = entry.path.relative_to(tree)
+            dest = data / rel
+            if entry.kind.value == "directory":
+                dest.mkdir(parents=True)
+            else:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                _shutil.copy2(entry.path, dest)
+
+        (tree / "Documents" / "notes.txt").unlink()
+        (tree / ".bashrc").unlink()
+        plan = build_plan(manifest, ALL, tree, exclude=[".bashrc"])
+        result = execute_plan(plan, tree, storage, data, manifest, approve=True)
+        assert result.status == "completed"
+        # Excluded file stays absent; included file was restored.
+        assert not (tree / ".bashrc").exists()
+        assert (tree / "Documents" / "notes.txt").read_text() == "data\n"
+
+    def test_cli_plan_passes_exclude_through(self, capsys, rich_tree, tmp_path):
+        storage = tmp_path / "store"
+        rc = cli_main(["snapshot", "--root", str(rich_tree), "--storage", str(storage)])
+        assert rc == 0
+        from linux_state.storage import list_snapshots
+
+        sid = list_snapshots(storage)[0]
+        rc = cli_main([
+            "plan", sid,
+            "--root", str(rich_tree),
+            "--storage", str(storage),
+            "--exclude", "Documents/**",
+        ])
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "user exclude" in out
+
+
+class TestMatchingHelper:
+    def test_normalize_strips_tilde_and_slashes(self):
+        from linux_state.matching import normalize_exclude_patterns
+
+        assert normalize_exclude_patterns(["~/x/**", "/y/**", "", "  "]) == [
+            "x/**", "y/**",
+        ]
+
+    def test_is_excluded_double_star_semantics(self):
+        from linux_state.matching import is_excluded
+
+        pats = ["Documents/**"]
+        assert is_excluded("Documents", pats)
+        assert is_excluded("Documents/a/b.txt", pats)
+        assert not is_excluded("Downloads/a", pats)
+
+    def test_snapshot_and_planner_share_helper(self):
+        import inspect
+
+        from linux_state import matching, snapshot
+
+        source = inspect.getsource(snapshot._filter_entries)
+        assert "is_excluded" in source

@@ -123,8 +123,13 @@ def build_plan(
     manifest: dict,
     resolved: ResolvedProfile,
     current_root: Path,
+    exclude: list[str] | None = None,
 ) -> RestorePlan:
-    """Build a RestorePlan. Pure: reads the current tree, writes nothing."""
+    """Build a RestorePlan. Pure: reads the current tree, writes nothing.
+
+    *exclude* globs (same semantics as ``snapshot --exclude``) mark
+    matching entries as SKIPPED with reason "user exclude".
+    """
     current_root = Path(current_root).resolve()
     snapshot_root = Path(manifest["root"]).resolve()
     if snapshot_root != current_root:
@@ -144,6 +149,12 @@ def build_plan(
     )
     selected_paths = {path for path, _ in selected}
 
+    exclude_patterns: list[str] = []
+    if exclude:
+        from linux_state.matching import is_excluded, normalize_exclude_patterns
+
+        exclude_patterns = normalize_exclude_patterns(exclude)
+
     current_state = _current_index(current_root)
 
     actions: list[PlannedAction] = []
@@ -151,6 +162,12 @@ def build_plan(
         if relative not in selected_paths:
             continue
         assert classification is not None
+
+        if exclude_patterns and is_excluded(relative, exclude_patterns):
+            actions.append(PlannedAction(
+                relative, SKIPPED, "user exclude", record["type"],
+            ))
+            continue
 
         if classification.restore_default == "never":
             actions.append(PlannedAction(

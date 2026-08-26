@@ -248,7 +248,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         ))
 
     try:
-        plan = build_plan(manifest, resolved, root)
+        plan = build_plan(manifest, resolved, root, exclude=args.exclude)
     except ValueError as exc:
         print(
             f"ERROR\nOperation: plan\nPath: {root}\n"
@@ -310,7 +310,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
         ))
 
     try:
-        plan = build_plan(manifest, resolved, root)
+        plan = build_plan(manifest, resolved, root, exclude=args.exclude)
     except ValueError as exc:
         print(
             f"ERROR\nOperation: restore\nPath: {root}\n"
@@ -560,6 +560,13 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Storage root (default: $XDG_DATA_HOME/linux-state).",
     )
+    plan_cmd.add_argument(
+        "--exclude",
+        action="append",
+        metavar="GLOB",
+        help="Exclude matching paths (repeatable fnmatch glob relative to "
+             "root; '**' supported, 'DIR/**' also excludes DIR itself).",
+    )
     plan_cmd.set_defaults(func=cmd_plan)
 
     restore_cmd = sub.add_parser(
@@ -575,6 +582,13 @@ def build_parser() -> argparse.ArgumentParser:
                              help="Profiles directory override.")
     restore_cmd.add_argument("--storage", metavar="PATH",
                              help="Storage root (default: $XDG_DATA_HOME/linux-state).")
+    restore_cmd.add_argument(
+        "--exclude",
+        action="append",
+        metavar="GLOB",
+        help="Exclude matching paths (repeatable fnmatch glob relative to "
+             "root; '**' supported, 'DIR/**' also excludes DIR itself).",
+    )
     restore_cmd.add_argument(
         "--conflict",
         choices=("skip", "replace"),

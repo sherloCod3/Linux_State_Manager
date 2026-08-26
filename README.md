@@ -84,11 +84,19 @@ linux-state plan <snapshot-id> --root ~ --profile desktop:hyprland
 
 # Or across all restorable categories:
 linux-state plan <snapshot-id> --root ~
+
+# Reduce amplitude further: skip matching paths entirely.
+# Repeatable fnmatch globs relative to root ('**' supported;
+# 'DIR/**' also excludes DIR itself):
+linux-state plan <snapshot-id> --root ~ \
+  --exclude "Documents/**/.venv/**" \
+  --exclude "**/node_modules/**"
 ```
 
 The plan reports each entry as `NEW`, `SAME`, `MODIFIED`, `CONFLICT` or
 `SKIPPED`. Caches are always skipped (`never`). Secrets are skipped until
-explicitly reviewed.
+explicitly reviewed. Paths matched by `--exclude` are reported as
+`SKIPPED (user exclude)`.
 
 ### Restore (requires explicit approval)
 
@@ -98,6 +106,10 @@ linux-state restore <snapshot-id> --root ~ --profile shell --approve
 
 # Replace conflicting files after they are backed up:
 linux-state restore <snapshot-id> --root ~ --conflict replace --approve
+
+# Excludes work on restore exactly as on plan:
+linux-state restore <snapshot-id> --root ~ --profile personal \
+  --exclude "**/node_modules/**" --approve
 ```
 
 Every restore runs as a transaction: previous versions of replaced files are

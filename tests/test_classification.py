@@ -151,6 +151,13 @@ class TestBundledClassification:
 
 
 class TestXdgFallback:
+    @pytest.fixture(autouse=True)
+    def _isolated_xdg_env(self, monkeypatch):
+        """Pin the XDG environment so the machine's real settings cannot
+        leak into expectations derived from tmp_path."""
+        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+        monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+
     def test_cache_dir_fallback(self, monkeypatch, tmp_path):
         monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "home" / ".cache"))
         xdg = XdgDirs(home=tmp_path / "home")

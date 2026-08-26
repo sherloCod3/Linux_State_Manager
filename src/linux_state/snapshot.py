@@ -28,7 +28,6 @@ from linux_state.compression import CompressionError
 from linux_state.discovery import Entry, Kind
 from linux_state.manifest import build_manifest, serialize_manifest
 
-import fnmatch
 
 METADATA_VERSION = 1
 
@@ -200,33 +199,15 @@ def _filter_entries(
         selected = {path for path, _ in select_entries(classified, profile)}
         filtered = [e for e in filtered if e.relative_to(root) in selected]
     if exclude:
-        normalized = []
-        for pat in exclude:
-            p = pat.strip()
-            if p.startswith("~/"):
-                p = p[2:]
-            p = p.lstrip("/")
-            if p:
-                normalized.append(p)
+        from linux_state.matching import is_excluded, normalize_exclude_patterns
+
+        normalized = normalize_exclude_patterns(exclude)
         if normalized:
             kept: list[Entry] = []
             for entry in filtered:
                 rel = entry.relative_to(root)
-                # fnmatch alone does not make '**' semantics intuitive
-                # (e.g. 'Documents' should be excluded by 'Documents/**').
-                excluded = False
-                for pat in normalized:
-                    if pat.endswith("/**"):
-                        base = pat[:-3]
-                        if rel == base or rel.startswith(base + "/"):
-                            excluded = True
-                            break
-                    if fnmatch.fnmatch(rel, pat):
-                        excluded = True
-                        break
-                if excluded:
-                    continue
-                kept.append(entry)
+                if not is_excluded(rel, normalized):
+                    kept.append(entry)
             filtered = kept
     return filtered
 
